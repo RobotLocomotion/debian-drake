@@ -1,0 +1,13 @@
+Document: drake-doc
+Title: drake
+Author: Drake Development Team
+Abstract: Drake ("dragon" in Middle English) is a toolbox maintained by the
+ Robot Locomotion Group at the MIT Computer Science and Artificial Intelligence
+ Lab (CSAIL). It is a collection of tools for analyzing the dynamics of robots
+ and building control systems for them in C++ and Python, with a heavy emphasis
+ on optimization-based design/analysis.
+Section: Programming
+
+Format: HTML
+Index: /opt/drake/share/doc/drake-doc/html/index.html
+Files: /opt/drake/share/doc/drake-doc/html/*.html

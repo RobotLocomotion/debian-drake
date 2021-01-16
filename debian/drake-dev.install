@@ -1,0 +1,5 @@
+opt/drake/bin/.drake-visualizer-real
+opt/drake/bin/*
+opt/drake/include/*
+opt/drake/lib/*
+opt/drake/share/*

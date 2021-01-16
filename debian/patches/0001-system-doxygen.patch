@@ -1,0 +1,22 @@
+From: Jamie Snape  <jamie.snape@kitware.com>>
+Date: Fri, 15 Jan 2021 17:58:55 -0500
+Subject: Explicitly set encoding when opening files in system_doxygen.py
+Origin: upstream, https://github.com/RobotLocomotion/drake/pull/14536/
+
+---
+ doc/system_doxygen.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/doc/system_doxygen.py b/doc/system_doxygen.py
+index d9efe81..ce455b3 100755
+--- a/doc/system_doxygen.py
++++ b/doc/system_doxygen.py
+@@ -73,7 +73,7 @@ if __name__ == "__main__":
+         raise RuntimeError("Usage: system_doxygen.py input_file")
+ 
+     # Load the file in batch into a string.
+-    with open(sys.argv[1], 'r') as f:
++    with open(sys.argv[1], 'r', encoding='utf-8') as f:
+         s = f.read()
+ 
+     s = process_doxygen_system_tags(s)

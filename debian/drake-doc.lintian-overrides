@@ -1,0 +1,6 @@
+drake-doc: dir-or-file-in-opt opt/drake/share/doc/*
+drake-doc: doc-base-file-references-wrong-path *
+drake-doc: new-package-should-close-itp-bug
+drake-doc: privacy-breach-generic opt/drake/share/doc/*
+drake-doc: privacy-breach-logo opt/drake/share/doc/drake-doc/html/*
+drake-doc: privacy-breach-uses-embedded-file opt/drake/share/doc/libdrake-doc/*

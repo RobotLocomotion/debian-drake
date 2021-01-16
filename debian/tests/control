@@ -1,0 +1,2 @@
+Tests: python3-pydrake
+Depends: drake-dev

@@ -1,0 +1,8 @@
+debian-drake:
+  build: .
+  volumes:
+    - ..:/root/debian-drake
+  working_dir: /root/debian-drake
+  privileged: true
+  stdin_open: true
+  tty: true

@@ -1,0 +1,5 @@
+drake source: debian-watch-does-not-check-gpg-signature
+drake source: package-does-not-install-examples bindings/pydrake/*
+drake source: package-does-not-install-examples examples/*
+drake source: unused-file-paragraph-in-dep5-copyright *
+drake source: wildcard-matches-nothing-in-dep5-copyright external/*

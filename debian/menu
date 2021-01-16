@@ -1,0 +1,23 @@
+?package(drake-dev): \
+  needs="X11" \
+  section="Applications/Network/Monitoring" \
+  title="drake-lcm-spy" \
+  command="/opt/drake/bin/drake-lcm-spy"
+
+?package(drake-dev): \
+  needs="X11" \
+  section="Applications/Network/Monitoring" \
+  title="drake-visualizer" \
+  command="/opt/drake/bin/drake-visualizer"
+
+?package(drake-dev): \
+  needs="X11" \
+  section="Applications/Network/Monitoring" \
+  title="lcm-logplayer-gui" \
+  command="/opt/drake/bin/lcm-logplayer-gui"
+
+?package(drake-dev): \
+  needs="X11" \
+  section="Applications/Network/Monitoring" \
+  title="lcm-spy" \
+  command="/opt/drake/bin/lcm-spy"

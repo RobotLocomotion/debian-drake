@@ -1,0 +1,146 @@
+Source: drake
+Maintainer: Drake Development Team <drake-users@mit.edu>
+Uploaders: Jamie Snape <jamie.snape@kitware.com>
+Section: libdevel
+Priority: optional
+Build-Depends: bazel,
+               clang-format-9,
+               coinor-libclp-dev,
+               coinor-libcoinutils-dev,
+               coinor-libipopt-dev,
+               debhelper (>= 11),
+               default-jdk,
+               default-jre,
+               dh-python,
+               file,
+               gfortran,
+               git,
+               graphviz,
+               javahelper,
+               jupyter-notebook,
+               libamd2,
+               libblas-dev,
+               libboost-all-dev,
+               libbz2-dev,
+               libclang-9-dev,
+               libdouble-conversion-dev,
+               libeigen3-dev,
+               libexpat1-dev,
+               libfreetype6,
+               libgflags-dev,
+               libgfortran4,
+               libgl1-mesa-dev,
+               libglew-dev,
+               libglib2.0-dev,
+               libglu1-mesa,
+               libglx0,
+               libhdf5-100,
+               libjpeg-turbo8-dev,
+               libjsoncpp-dev,
+               liblapack-dev,
+               libldl2,
+               liblz4-dev,
+               liblzma-dev,
+               libmumps-seq-dev,
+               libnetcdf13,
+               libnlopt-dev,
+               libogg0,
+               libopengl0,
+               libpng-dev,
+               libqt5core5a,
+               libqt5gui5,
+               libqt5printsupport5,
+               libqt5widgets5,
+               libquadmath0,
+               libsqlite3-0,
+               libsuitesparse-dev,
+               libtheora0,
+               libtiff5-dev,
+               libtinyxml-dev,
+               libtinyxml2-dev,
+               libtool,
+               libx11-dev,
+               libxml2,
+               libxt6,
+               libyaml-cpp-dev,
+               openssh-client,
+               patch,
+               patchelf,
+               pkg-config,
+               python3,
+               python3-all-dev,
+               python3-ipywidgets,
+               python3-lxml,
+               python3-matplotlib,
+               python3-numpy,
+               python3-pydot,
+               python3-scipy,
+               python3-tk,
+               python3-tornado,
+               python3-u-msgpack,
+               python3-yaml,
+               python3-zmq,
+               rsync,
+               unzip,
+               zlib1g-dev
+Build-Depends-Indep: doxygen,
+                     fonts-dejavu-core,
+                     fonts-dejavu-extra,
+                     python3-docutils,
+                     python3-sphinx-rtd-theme,
+                     python3-sphinx
+X-Python3-Version: >= 3.6
+Standards-Version: 4.1.4
+Homepage: https://drake.mit.edu
+Vcs-Browser: https://github.com/RobotLocomotion/drake
+Vcs-Git: https://github.com/RobotLocomotion/drake.git
+Rules-Requires-Root: no
+
+Package: drake-dev
+Architecture: any
+Multi-Arch: no
+Depends: jupyter-notebook,
+         libboost-all-dev,
+         libeigen3-dev,
+         libtinyxml2-dev,
+         libyaml-cpp-dev,
+         python3-ipywidgets,
+         python3-lxml,
+         python3-matplotlib,
+         python3-pydot,
+         python3-scipy,
+         python3-tk,
+         python3-tornado,
+         python3-u-msgpack,
+         python3-yaml,
+         python3-zmq,
+         ${java:Depends},
+         ${python3:Depends},
+         ${shlibs:Depends},
+         ${misc:Depends}
+Suggests: drake-doc
+Description: Model-based design/verification for robotics (development files)
+ Drake ("dragon" in Middle English) is a toolbox maintained by the Robot
+ Locomotion Group at the MIT Computer Science and Artificial Intelligence Lab
+ (CSAIL). It is a collection of tools for analyzing the dynamics of robots and
+ building control systems for them in C++ and Python, with a heavy emphasis on
+ optimization-based design/analysis.
+ .
+ This package provides development files.
+
+Package: drake-doc
+Architecture: all
+Section: doc
+Depends: fonts-dejavu-core,
+         fonts-dejavu-extra,
+         ${sphinxdoc:Depends},
+         ${misc:Depends}
+Built-Using: ${sphinxdoc:Built-Using}
+Description: Model-based design/verification for robotics (documentation)
+ Drake ("dragon" in Middle English) is a toolbox maintained by the Robot
+ Locomotion Group at the MIT Computer Science and Artificial Intelligence Lab
+ (CSAIL). It is a collection of tools for analyzing the dynamics of robots and
+ building control systems for them in C++ and Python, with a heavy emphasis on
+ optimization-based design/analysis.
+ .
+ This package provides documentation.
