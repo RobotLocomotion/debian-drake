@@ -1,0 +1,3 @@
+/opt/drake/share/doc/drake-doc/html/ /opt/drake/share/doc/drake/html
+/opt/drake/share/doc/libdrake-doc/html/ /opt/drake/share/doc/drake-doc/html/doxygen_cxx
+/opt/drake/share/doc/python3-pydrake-doc/html/ /opt/drake/share/drake-doc/html/pydrake

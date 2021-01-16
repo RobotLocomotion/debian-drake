@@ -1,0 +1,200 @@
+#!/usr/bin/make -f
+
+DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DEB_LDFLAGS_MAINT_APPEND := -Wl,--as-needed
+DPKG_EXPORT_BUILDTOOLS := 1
+
+include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/buildflags.mk
+include /usr/share/dpkg/buildtools.mk
+
+export DESTDIR := $(CURDIR)/debian/tmp
+export LANG := en_US.UTF-8
+export SNOPT_PATH := git
+
+%:
+	dh $@ --with javahelper
+
+.PHONY: override_dh_auto_configure
+override_dh_auto_configure:
+
+.PHONY: override_dh_auto_build-arch
+override_dh_auto_build-arch:
+	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) \
+		//:install
+
+.PHONY: override_dh_auto_build-indep
+override_dh_auto_build-indep:
+	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) \
+		//bindings/pydrake/doc:gen_sphinx \
+		//doc:doxygen \
+		//doc:gen_sphinx
+
+.PHONY: override_dh_auto_install-arch
+override_dh_auto_install-arch:
+	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //:install -- \
+		--strip_tool=$(STRIP) \
+		/opt/drake
+	rm -rf \
+		$(DESTDIR)/opt/drake/include/ibex \
+		$(DESTDIR)/opt/drake/include/ibex.h \
+		$(DESTDIR)/opt/drake/lib/ibex \
+		$(DESTDIR)/opt/drake/lib/python$(PYTHON_VERSION)/site-packages/pydrake/examples/multibody/cart_pole_passive_simulation \
+		$(DESTDIR)/opt/drake/lib/python$(PYTHON_VERSION)/site-packages/pydrake/examples/multibody/pendulum_lqr_monte_carlo_analysis \
+		$(DESTDIR)/opt/drake/lib/python$(PYTHON_VERSION)/site-packages/pydrake/examples/multibody/run_planar_scenegraph_visualizer \
+		$(DESTDIR)/opt/drake/share/drake/setup \
+		$(DESTDIR)/opt/drake/share/java/drake-lcm-spy.jar \
+		$(DESTDIR)/opt/drake/share/java/lcm-logplayer-gui.jar \
+		$(DESTDIR)/opt/drake/share/java/lcm-spy.jar
+	rsync -am \
+		--include='LICENSE*' \
+		--include='*/' \
+		--exclude='*' \
+		--remove-source-files \
+		$(DESTDIR)/opt/drake/share/drake/ \
+		$(DESTDIR)/opt/drake/share/doc/drake
+	sed -i '/^#!\/usr\/bin\/python$$/d' \
+		$(DESTDIR)/opt/drake/lib/python$(PYTHON_VERSION)/site-packages/director/thirdparty/min_bounding_rect.py \
+		$(DESTDIR)/opt/drake/lib/python$(PYTHON_VERSION)/site-packages/director/thirdparty/qhull_2d.py
+
+.PHONY: override_dh_auto_install-indep
+override_dh_auto_install-indep:
+	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:gen_sphinx -- \
+		--out_dir=$(DESTDIR)/opt/drake/share/doc/drake-doc/html
+	rm -f $(DESTDIR)/opt/drake/share/doc/drake-doc/html/.buildinfo
+	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //bindings/pydrake/doc:gen_sphinx -- \
+		--out_dir=$(DESTDIR)/opt/drake/share/doc/python3-pydrake-doc/html
+	rm -f $(DESTDIR)/opt/drake/share/doc/python3-pydrake-doc/html/.buildinfo
+	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:doxygen -- \
+		--out_dir=$(DESTDIR)/opt/drake/share/doc/libdrake-doc
+	rm -f $(DESTDIR)/opt/drake/share/doc/libdrake-doc/doxygen.log
+
+.PHONY: override_dh_install-arch
+override_dh_install-arch:
+	dh_install -a
+	rm -rf \
+		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/drake-doc \
+		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/libdrake-doc \
+		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/python3-pydrake-doc
+
+.PHONY: override_dh_installdocs-indep
+override_dh_installdocs-indep:
+	dh_installdocs -i
+	dh_doxygen -p drake-doc opt/drake/share/doc/libdrake-doc/html
+
+.PHONY: override_dh_sphinxdoc-indep
+override_dh_sphinxdoc-indep:
+	dh_sphinxdoc -p drake-doc \
+		opt/drake/share/doc/drake-doc/html \
+		opt/drake/share/doc/python3-pydrake-doc/html
+
+.PHONY: override_dh_python3-arch
+override_dh_python3-arch:
+	dh_python3 -p drake-dev opt/drake/lib/python$(PYTHON_VERSION)/site-packages
+	dh_numpy3 -a
+
+.PHONY: override_dh_fixperms-arch
+override_dh_fixperms-arch:
+	dh_fixperms -a
+	find $(CURDIR)/debian/drake-dev \
+		-type f \( \
+			-name '*.bzl' -o -name '*.cmake' -o -name '*.dae' -o -name '*.h' \
+			-o -name '*.hh' -o -name '*.hpp' -o -name '*.html' \
+			-o -name '*.hxx' -o -name '*.icc' -o -name '*.ih' -o -name '*.inc' \
+			-o -name '*.inl' -o -name '*.jar' -o -name '*.mtl' \
+			-o -name '*.obj' -o -name '*.rst' -o -name '*.sdf' \
+			-o -name '*.stl' -o -name '*.svg' -o -name '*.txt' \
+			-o -name '*.TXT' -o -name '*.txx' -o -name '*.urdf' \
+			-o -name '*.vtm' -o -name '*.vtp' -o -name '*.xml' \
+			-o -name LICENSE \
+		\) -print0 2>/dev/null | xargs -0r chmod 0644
+	find $(CURDIR)/debian/drake-dev/opt/drake/lib/python$(PYTHON_VERSION)/site-packages \
+		-type f -name '*.py' -print0 2>/dev/null | xargs -0r chmod 0644
+	egrep -rlZ --include='*.py' \
+		'^#! *(/usr/bin/env python|/usr/bin/python)[23]?$$' \
+		$(CURDIR)/debian/drake-dev/opt/drake/lib/python$(PYTHON_VERSION)/site-packages \
+		2>/dev/null | xargs -0r chmod 0755
+
+.PHONY: override_dh_fixperms-indep
+override_dh_fixperms-indep:
+	dh_fixperms -i
+	find $(CURDIR)/debian/drake-doc \
+		-type f \( \
+			-name '*.bzl' -o -name '*.cmake' -o -name '*.dae' -o -name '*.h' \
+			-o -name '*.hh' -o -name '*.hpp' -o -name '*.html' \
+			-o -name '*.hxx' -o -name '*.icc' -o -name '*.ih' -o -name '*.inc' \
+			-o -name '*.inl' -o -name '*.jar' -o -name '*.mtl' \
+			-o -name '*.obj' -o -name '*.rst' -o -name '*.sdf' \
+			-o -name '*.stl' -o -name '*.svg' -o -name '*.txt' \
+			-o -name '*.TXT' -o -name '*.txx' -o -name '*.urdf' \
+			-o -name '*.vtm' -o -name '*.vtp' -o -name '*.xml' \
+			-o -name LICENSE \
+		\) -print0 2>/dev/null | xargs -0r chmod 0644
+
+.PHONY: override_dh_missing
+override_dh_missing:
+	dh_missing --fail-missing
+
+.PHONY: override_dh_makeshlibs
+override_dh_makeshlibs:
+	dh_makeshlibs -n
+
+.PHONY: override_dh_auto_clean
+override_dh_auto_clean:
+ifneq (,$(shell which bazel))
+	$(BAZEL) clean --expunge
+endif
+	rm -rf $(BAZEL_OUTPUT_USER_ROOT)
+	dh_clean
+
+ifneq ($(DEB_BUILD_ARCH),amd64)
+	$(error build architecture is not supported)
+endif
+
+ifneq ($(DEB_HOST_ARCH),amd64)
+	$(error host architecture is not supported)
+endif
+
+BAZEL_OUTPUT_USER_ROOT := /tmp/bazel
+
+BAZEL := env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+	bazel --output_user_root=$(BAZEL_OUTPUT_USER_ROOT)
+
+BAZEL_BUILD_OPTIONS := \
+	--action_env=LANG \
+	--action_env=PATH=/usr/bin:/bin \
+	--config=snopt \
+	--experimental_convenience_symlinks=ignore
+
+ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
+	BAZEL_BUILD_OPTIONS += -c dbg
+else
+	BAZEL_BUILD_OPTIONS += -c opt
+endif
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+	BAZEL_BUILD_OPTIONS += \
+		-j $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+endif
+
+ifeq (,$(filter terse,$(DEB_BUILD_OPTIONS)))
+	BAZEL_BUILD_OPTIONS += --announce_rc -s
+endif
+
+ifneq (,$(filter -D_FORTIFY_SOURCE=%,$(CPPFLAGS)))
+	BAZEL_BUILD_OPTIONS += --copt=-U_FORTIFY_SOURCE
+endif
+
+ifneq (,$(filter nostrip,$(DEB_BUILD_OPTIONS)))
+	$(warning debugging symbols will still be stripped from the binary during \
+		installation because support for SNOPT is enabled)
+endif
+
+BAZEL_BUILD_OPTIONS += \
+	$(foreach CPPFLAG,$(CPPFLAGS),--copt=$(CPPFLAG)) \
+	$(foreach CFLAG,$(CFLAGS),--conlyopt=$(CFLAG)) \
+	$(foreach CXXFLAG,$(CXXFLAGS),--cxxopt=$(CXXFLAG)) \
+	$(foreach LDFLAG,$(LDFLAGS),--linkopt=$(LDFLAG))
+
+PYTHON_VERSION := $(shell python3 -V 2>&1 \
+	| sed -n 's/^.*\n*Python \([0-9]\+\)\.\([0-9]\+\).*/\1.\2/p')

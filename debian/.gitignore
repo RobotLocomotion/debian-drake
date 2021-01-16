@@ -1,0 +1,7 @@
+/.debhelper/
+/*.debhelper
+/*.substvars
+/debhelper-build-stamp
+/drake-*/
+/files
+/tmp/

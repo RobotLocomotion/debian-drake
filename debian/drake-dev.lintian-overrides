@@ -1,0 +1,10 @@
+drake-dev: binary-or-shlib-defines-rpath opt/drake/lib/*
+drake-dev: dir-or-file-in-opt opt/drake/*
+drake-dev: extra-license-file opt/drake/share/doc/*
+drake-dev: hardening-no-bindnow opt/drake/lib/libdrake_ibex.so
+drake-dev: hardening-no-bindnow opt/drake/lib/python3.8/site-packages/director/vtkDRCFiltersPython.cpython-38-x86_64-linux-gnu.so
+drake-dev: hardening-no-fortify-functions opt/drake/lib/*
+drake-dev: jar-not-in-usr-share opt/drake/share/java/*
+drake-dev: new-package-should-close-itp-bug
+drake-dev: package-contains-documentation-outside-usr-share-doc opt/drake/share/doc/*
+drake-dev: spelling-error-in-binary opt/drake/*

@@ -1,0 +1,25 @@
+*                   text=auto
+
+*.conf              eol=lf text whitespace=tab-in-indent,trailing-space
+*.doc-base          eol=lf text whitespace=tab-in-indent,trailing-space
+*.install           eol=lf text whitespace=tab-in-indent,trailing-space
+*.links             eol=lf text whitespace=tab-in-indent,trailing-space
+*.lintian-overrides eol=lf text whitespace=tab-in-indent,trailing-space
+*.yml               eol=lf text whitespace=tab-in-indent,trailing-space
+
+.dockerignore       eol=lf text whitespace=tab-in-indent,trailing-space
+.editorconfig       eol=lf text whitespace=tab-in-indent,trailing-space
+.gitattributes      eol=lf text whitespace=tab-in-indent,trailing-space
+.gitignore          eol=lf text whitespace=tab-in-indent,trailing-space
+changelog           eol=lf text whitespace=tab-in-indent,trailing-space
+compat              eol=lf text whitespace=tab-in-indent,trailing-space
+control             eol=lf text whitespace=tab-in-indent,trailing-space
+copyright           eol=lf text whitespace=tab-in-indent,trailing-space
+Dockerfile          eol=lf text whitespace=tab-in-indent,trailing-space
+format              eol=lf text whitespace=tab-in-indent,trailing-space
+LICENSE             eol=lf text whitespace=tab-in-indent,trailing-space
+lintian-overrides   eol=lf text whitespace=tab-in-indent,trailing-space
+menu                eol=lf text whitespace=tab-in-indent,trailing-space
+rules               eol=lf text whitespace=indent-with-non-tab,trailing-space
+series              eol=lf text whitespace=tab-in-indent,trailing-space
+watch               eol=lf text whitespace=tab-in-indent,trailing-space
