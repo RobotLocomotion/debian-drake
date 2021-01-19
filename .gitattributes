@@ -1,0 +1,16 @@
+# -*- mode: gitattributes; -*-
+# vi: set ft=gitattributes:
+
+[attr]whitespace-2   whitespace=blank-at-eof,blank-at-eol,space-before-tab,tab-in-indent,tabwidth=2
+[attr]whitespace-md  whitespace=blank-at-eof,-blank-at-eol,space-before-tab,tab-in-indent,tabwidth=4
+
+*                    text=auto
+
+*.md                 text diff=markdown whitespace-md
+
+.editorconfig        text whitespace-2
+.gitattributes       text export-ignore whitespace-2
+CODEOWNERS           text whitespace-2
+LICENSE              text
+
+.github/**           export-ignore
