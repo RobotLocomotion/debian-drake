@@ -77,6 +77,14 @@ Files: external/com_jidesoft_jide_oss/*
 Copyright: TODO
 License: Apache-1.1 and GPL-2 with Classpath exception and LGPL-2.1+
 
+Files: external/common_robotics_utilities/*
+Copyright: 2011, Georgia Tech Research Corporation
+           2018, Calder Phillips-Grafflin
+           2018, Regents of the University of Michigan
+           2018, Toyota Research Institute
+           2018, Worcester Polytechnic Institute
+License: BSD-2-clause and BSD-3-clause
+
 Files: external/commons_io/*
 Copyright: TODO
 License: Apache-2.0
@@ -100,10 +108,6 @@ License: Apache-2.0 and BSD-2-clause and BSD-3-clause and CC0-1.0 and CC-BY-4.0 
 Files: external/fcl/*
 Copyright: TODO
 License: BSD-2-clause and BSD-3-clause and Expat
-
-Files: external/fmt/*
-Copyright: TODO
-License: BSD-3-clause and Python-2, and CC0-1.0 or Expat
 
 Files: external/ghc_filesystem/*
 Copyright: TODO
@@ -233,10 +237,6 @@ Files: external/snopt/*
 Copyright: TODO
 License: Expat and SNOPT
 
-Files: external/spdlog/*
-Copyright: TODO
-License: BSL-1.0 and Expat
-
 Files: external/sphinx/*
 Copyright: TODO
 License: BSD-2-clause and BSD-3-clause and Expat and public-domain
@@ -248,6 +248,11 @@ License: Apache-2.0 and BSD-3-clause and BSL-1.0 and Expat
 Files: external/uritemplate_py/*
 Copyright: TODO
 License: Apache-2.0 and BSD-3-clause
+
+Files: external/voxelized_geometry_tools/*
+Copyright: 2018, Calder Phillips-Grafflin
+           2018, Toyota Research Institute
+License: BSD-3-clause
 
 Files: external/vtk/*
 Copyright: TODO
