@@ -1,26 +1,38 @@
-"""Tool to help draft doc/release_notes/*.rst entries.
-This is intended for use by Drake maintainers (only).
-This program is only supported on Ubuntu Bionic 18.04.
+"""Tool to help populate doc/release_notes/*.rst entries by automatically
+adding commit messages' content into a structured document template.
 
-The usage of this tools is outlined in the "201912 Drake release playbook"
-document on Google Drive.
+This program is intended only for use by Drake maintainers who are preparing
+Drake's release notes documentation.
+
+This program is supported only on Ubuntu Bionic 18.04.
+
+The usage of this tool is outlined in the Drake release playbook
+document:
+
+  https://drake.mit.edu/release_playbook.html
 
 The tool reads the commit history of github.com/RobotLocomotion/drake using
 the GitHub APIs -- the status of your current git clone is ignored.
 
-To query GitHub APIs, you'll need to authenticate yourself first,
-via a GitHub API token:
+Use bazel to build the executable relnotes tool:
 
-  bazel build //tools/dev:relnotes
-  bazel-bin/tools/dev/relnotes
+  bazel build //tools/release_engineering:relnotes   # build
+  bazel-bin/tools/release_engineering/relnotes       # run
+
+To query GitHub APIs, you'll need to authenticate yourself first,
+via a GitHub API token.
 
 To create the required ~/.config/readonly_github_api_token.txt file, open a
 browser to https://github.com/settings/tokens and create a new token (it does
 not need any extra permissions; the default "no checkboxes are set" is good),
 and save the plaintext hexadecimal token to that file.
+
+TODO(jwnimmer-tri) Add specific example command lines to cargo cult from,
+either here or in release_playbook.rst.
 """
 
 import argparse
+from collections import Counter
 import logging
 import os.path
 import re
@@ -46,9 +58,15 @@ def _format_commit(gh, drake, commit):
     """Returns (packages, bullet) for the given commit.
 
     The packages is a list of top-level directories whose files were edited in
-    this commit.
+    this commit. If the packages list is empty, then the commit is ineligible
+    for release notes and should be dropped.
 
     The bullet is a "* Detail (#123)" summary of the change for release notes.
+
+    Ineligible commits: currently commits that only change files in dev
+    directories are ineligible. More ineligible commit conditions may be
+    defined later.
+
     """
     # Grab the commit message subject and body.
     message = commit.message
@@ -59,10 +77,21 @@ def _format_commit(gh, drake, commit):
     # notes author sort things better.
     comparison = drake.compare_commits(
         base=commit.parents[0].get('sha'), head=commit.sha)
-    committed_files = [x.get('filename') for x in comparison.files]
-    packages = sorted(set([
-        _filename_to_primary_package(x) for x in committed_files
-    ])) or ["tools"]
+    committed_files_weighted = (
+        {x.get('filename'): x.get('changes') for x in comparison.files})
+    # If all files in the commit are in dev directories, return empty data to
+    # indicate the commit is ineligible.
+    committed_nondev_files = [
+        x for x in committed_files_weighted.keys() if '/dev/' not in x]
+    if not committed_nondev_files:
+        return [], ""
+
+    # Report packages in order of most lines changed.
+    packages_weighted = sum(
+        [Counter({_filename_to_primary_package(k): v})
+         for k, v in committed_files_weighted.items()],
+        Counter())
+    packages = [k for k, v in packages_weighted.most_common()] or ["tools"]
     if len(packages) > 1 and "bindings" in packages:
         packages.remove("bindings")
 
@@ -125,7 +154,7 @@ def _update(args, rst_filename, gh, drake):
             (prior_newest_commit,) = match.groups()
             prior_newest_commit_line = i
     if not prior_newest_commit_line:
-        raise RuntimeError("Coult not find newest_commit inclusive")
+        raise RuntimeError("Could not find newest_commit inclusive")
     logging.debug(f"Prior newest_commit {prior_newest_commit}")
 
     # Find new commits from newest to oldest.
@@ -153,6 +182,11 @@ def _update(args, rst_filename, gh, drake):
         # Try not to hit GitHub API rate limits.
         time.sleep(0.2)
         packages, bullet = _format_commit(gh, drake, commit)
+
+        # Skip commits deemed ineligible.
+        if not packages:
+            continue
+
         primary_package = packages[0]
         preamble = ""
         if len(packages) > 1:
