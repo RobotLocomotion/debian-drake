@@ -7,12 +7,12 @@
 
 namespace drake {
 namespace multibody {
-namespace fem {
+namespace fixed_fem {
 /** Calculates the number of quadrature points used for simplices given the
  natural dimension and the order of the quadrature rule as template
  parameters. */
 template <int NaturalDim, int Order>
-constexpr int SimplexQuadratureNumLocations() {
+constexpr int num_simplex_quadrature_locations() {
   static_assert(
       1 <= Order && Order <= 3,
       "Only linear, quadratic and cubic quadrature rules are supported.");
@@ -42,10 +42,10 @@ constexpr int SimplexQuadratureNumLocations() {
 template <int NaturalDimension, int Order>
 class SimplexGaussianQuadrature
     : public Quadrature<NaturalDimension,
-          SimplexQuadratureNumLocations<NaturalDimension, Order>()> {
+          num_simplex_quadrature_locations<NaturalDimension, Order>()> {
  public:
   using Base = Quadrature<NaturalDimension,
-      SimplexQuadratureNumLocations<NaturalDimension, Order>()>;
+      num_simplex_quadrature_locations<NaturalDimension, Order>()>;
   using VectorD = typename Base::VectorD;
   using LocationsType = typename Base::LocationsType;
   using WeightsType = typename Base::WeightsType;
@@ -68,7 +68,7 @@ class SimplexGaussianQuadrature
         // TODO(xuchenhan-tri): fix the bug in cpplint as described in
         // https://github.com/google/styleguide/issues/541. A solution has been
         // proposed at https://github.com/cpplint/cpplint/pull/136.
-        // NOLINTNEXTLINE(readability/braces)
+        // NOLINTNEXTLINE(readability/braces) false positive
       } else if constexpr (Order == 2) {
         // quadrature point location,  weight/area
         //  (1/6, 1/6)                     1/3
@@ -83,7 +83,7 @@ class SimplexGaussianQuadrature
         points[2] = {1.0 / 6.0, 2.0 / 3.0};
         WeightsType weights = {{1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0}};
         return make_pair(move(points), move(weights));
-        // NOLINTNEXTLINE(readability/braces)
+        // NOLINTNEXTLINE(readability/braces) false positive
       } else if constexpr (Order == 3) {
         // quadrature point location,  weight/area
         //  (1/3, 1/3)                     -9/16
@@ -101,7 +101,7 @@ class SimplexGaussianQuadrature
       } else {
         DRAKE_UNREACHABLE();
       }
-      // NOLINTNEXTLINE(readability/braces)
+      // NOLINTNEXTLINE(readability/braces) false positive
     } else if constexpr (NaturalDimension == 3) {
       // For a unit tetrahedron, area = 1/6.
       if constexpr (Order == 1) {
@@ -110,7 +110,7 @@ class SimplexGaussianQuadrature
         LocationsType points = {{{0.25, 0.25, 0.25}}};
         WeightsType weights = {{1.0 / 6.0}};
         return make_pair(move(points), move(weights));
-        // NOLINTNEXTLINE(readability/braces)
+        // NOLINTNEXTLINE(readability/braces) false positive
       } else if constexpr (Order == 2) {
         // quadrature point location,  weight/area
         //  (a, b, b)                      1/4
@@ -128,7 +128,7 @@ class SimplexGaussianQuadrature
         WeightsType weights = {
             {1.0 / 24.0, 1.0 / 24.0, 1.0 / 24.0, 1.0 / 24.0}};
         return make_pair(move(points), move(weights));
-        // NOLINTNEXTLINE(readability/braces)
+        // NOLINTNEXTLINE(readability/braces) false positive
       } else if constexpr (Order == 3) {
         // quadrature point location,  weight/area
         //  (1/4, 1/4, 1/4)               -4/5
@@ -156,6 +156,6 @@ class SimplexGaussianQuadrature
     }
   }
 };
-}  // namespace fem
+}  // namespace fixed_fem
 }  // namespace multibody
 }  // namespace drake
