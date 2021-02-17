@@ -86,6 +86,8 @@ Build-Depends: bazel,
 Build-Depends-Indep: doxygen,
                      fonts-dejavu-core,
                      fonts-dejavu-extra,
+                     jekyll,
+                     node-uglify,
                      python3-docutils,
                      python3-sphinx-rtd-theme,
                      python3-sphinx
