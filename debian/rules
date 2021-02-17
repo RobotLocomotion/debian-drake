@@ -20,15 +20,11 @@ override_dh_auto_configure:
 
 .PHONY: override_dh_auto_build-arch
 override_dh_auto_build-arch:
-	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) \
-		//:install
+	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) //:install
 
 .PHONY: override_dh_auto_build-indep
 override_dh_auto_build-indep:
-	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) \
-		//bindings/pydrake/doc:gen_sphinx \
-		//doc:doxygen \
-		//doc:gen_sphinx
+	$(BAZEL) build $(BAZEL_BUILD_OPTIONS) //doc:build
 
 .PHONY: override_dh_auto_install-arch
 override_dh_auto_install-arch:
@@ -59,34 +55,25 @@ override_dh_auto_install-arch:
 
 .PHONY: override_dh_auto_install-indep
 override_dh_auto_install-indep:
-	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:gen_sphinx -- \
+	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:build -- \
 		--out_dir=$(DESTDIR)/opt/drake/share/doc/drake-doc/html
-	rm -f $(DESTDIR)/opt/drake/share/doc/drake-doc/html/.buildinfo
-	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //bindings/pydrake/doc:gen_sphinx -- \
-		--out_dir=$(DESTDIR)/opt/drake/share/doc/python3-pydrake-doc/html
-	rm -f $(DESTDIR)/opt/drake/share/doc/python3-pydrake-doc/html/.buildinfo
-	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:doxygen -- \
-		--out_dir=$(DESTDIR)/opt/drake/share/doc/libdrake-doc
-	rm -f $(DESTDIR)/opt/drake/share/doc/libdrake-doc/doxygen.log
+	rm -rf $(DESTDIR)/opt/drake/share/doc/drake-doc/html/jekyll
 
 .PHONY: override_dh_install-arch
 override_dh_install-arch:
 	dh_install -a
-	rm -rf \
-		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/drake-doc \
-		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/libdrake-doc \
-		$(CURDIR)/debian/drake-dev/opt/drake/share/doc/python3-pydrake-doc
+	rm -rf $(CURDIR)/debian/drake-dev/opt/drake/share/doc/drake-doc
 
 .PHONY: override_dh_installdocs-indep
 override_dh_installdocs-indep:
 	dh_installdocs -i
-	dh_doxygen -p drake-doc opt/drake/share/doc/libdrake-doc/html
+	dh_doxygen -p drake-doc opt/drake/share/doc/drake-doc/html/doxygen_cxx
 
 .PHONY: override_dh_sphinxdoc-indep
 override_dh_sphinxdoc-indep:
 	dh_sphinxdoc -p drake-doc \
 		opt/drake/share/doc/drake-doc/html \
-		opt/drake/share/doc/python3-pydrake-doc/html
+		opt/drake/share/doc/drake-doc/html/pydrake
 
 .PHONY: override_dh_python3-arch
 override_dh_python3-arch:

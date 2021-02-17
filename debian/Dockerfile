@@ -21,7 +21,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
   && rm -rf /var/lib/apt/lists/* \
   && echo .DS_Store > /root/.gitignore \
   && git config --global core.excludesfile /root/.gitignore \
-  && git config --global tar.tar.xz.command "xz -c"
+  && git config --global tar.tar.xz.command "xz -c" \
+  && git config --global user.email drake.jenkins.bot@gmail.com \
+  && git config --global user.name drake-jenkins-bot
 COPY control /tmp
 RUN export DEBIAN_FRONTEND=noninteractive \
   && apt-get update -qq \
