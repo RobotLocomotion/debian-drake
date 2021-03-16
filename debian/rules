@@ -71,9 +71,7 @@ override_dh_installdocs-indep:
 
 .PHONY: override_dh_sphinxdoc-indep
 override_dh_sphinxdoc-indep:
-	dh_sphinxdoc -p drake-doc \
-		opt/drake/share/doc/drake-doc/html \
-		opt/drake/share/doc/drake-doc/html/pydrake
+	dh_sphinxdoc -p drake-doc opt/drake/share/doc/drake-doc/html/pydrake
 
 .PHONY: override_dh_python3-arch
 override_dh_python3-arch:
