@@ -63,12 +63,6 @@ Diagram<T>::GetArbitraryInputPortLocator(InputPortIndex port_index) const {
 }
 
 template <typename T>
-typename Diagram<T>::InputPortLocator
-Diagram<T>::get_input_port_locator(InputPortIndex port_index) const {
-  return GetArbitraryInputPortLocator(port_index);
-}
-
-template <typename T>
 const typename Diagram<T>::OutputPortLocator&
 Diagram<T>::get_output_port_locator(OutputPortIndex port_index) const {
   DRAKE_DEMAND(port_index >= 0 &&
@@ -1025,9 +1019,9 @@ bool Diagram<T>::DiagramHasDirectFeedthrough(int input_port, int output_port)
     size_t removed_count = active_set.erase(current_output_id);
     DRAKE_ASSERT(removed_count == 1);
     const System<T>* sys = current_output_id.first;
-    for (InputPortIndex i(0); i < sys->num_input_ports(); ++i) {
-      if (sys->HasDirectFeedthrough(i, current_output_id.second)) {
-        const InputPortLocator curr_input_id(sys, i);
+    for (const auto& [sys_input, sys_output] : sys->GetDirectFeedthroughs()) {
+      if (sys_output == current_output_id.second) {
+        const InputPortLocator curr_input_id(sys, sys_input);
         if (target_input_ids.count(curr_input_id)) {
           // We've found a direct-feedthrough path to the input_port.
           return true;
