@@ -56,7 +56,6 @@ override_dh_auto_install-arch:
 override_dh_auto_install-indep:
 	$(BAZEL) run $(BAZEL_BUILD_OPTIONS) //doc:build -- \
 		--out_dir=$(DESTDIR)/opt/drake/share/doc/drake-doc/html
-	rm -rf $(DESTDIR)/opt/drake/share/doc/drake-doc/html/jekyll
 
 .PHONY: override_dh_install-arch
 override_dh_install-arch:
