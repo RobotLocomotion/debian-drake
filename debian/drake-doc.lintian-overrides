@@ -1,5 +1,6 @@
 drake-doc: dir-or-file-in-opt opt/drake/share/doc/*
 drake-doc: doc-base-file-references-wrong-path *
+drake-doc: extra-license-file opt/drake/share/doc/drake-doc/html/third_party/*
 drake-doc: privacy-breach-generic opt/drake/share/doc/*
 drake-doc: privacy-breach-logo opt/drake/share/doc/drake-doc/html/*
 drake-doc: privacy-breach-uses-embedded-file opt/drake/share/doc/drake-doc/html/doxygen_cxx/*

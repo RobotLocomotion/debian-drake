@@ -16,13 +16,6 @@ Copyright: 2012, Open Source Robotics Foundation
            2017, Toyota Research Institute
 License: Apache-2.0
 
-Files: bindings/pydrake/doc/pydrake_sphinx_extension.py
-       bindings/pydrake/doc/sphinx.LICENSE.txt
-Copyright: 2007-2018, The Sphinx Team
-           2018, Massachusetts Institute of Technology
-           2018, Toyota Research Institute
-License: BSD-2-clause
-
 Files: common/autodiffxd.h
 Copyright: 2009, Gael Guennebaud
            2017, Massachusetts Institute of Technology
@@ -48,6 +41,13 @@ Files: debian/*
 Copyright: 2021, Massachusetts Institute of Technology
            2021, Toyota Research Institute
 License: BSD-3-clause
+
+Files: doc/pydrake/pydrake_sphinx_extension.py
+       doc/pydrake//sphinx.LICENSE.txt
+Copyright: 2007-2018, The Sphinx Team
+           2018, Massachusetts Institute of Technology
+           2018, Toyota Research Institute
+License: BSD-2-clause
 
 Files: doc/third_party/dracula/*
 Copyright: 2021, Zeno Rocha
@@ -238,10 +238,6 @@ Files: external/sdformat/*
 Copyright: TODO
 License: AGPL-3 and Apache-2.0 and BSD-2-clause and BSD-3-clause and BSL-1.0 and Zlib
 
-Files: external/semantic_version/*
-Copyright: TODO
-License: BSD-2-clause
-
 Files: external/snopt/*
 Copyright: TODO
 License: Expat and SNOPT
@@ -357,12 +353,6 @@ Copyright: 2006-2009, Johann C. Rocholl
            2017, Massachusetts Institute of Technology
            2017, Toyota Research Institute
 License: Expat
-
-Files: tools/workspace/sdformat/3bbd303.patch
-Copyright: 2020, Massachusetts Institute of Technology
-           2020, Open Source Robotics Foundation
-           2020, Toyota Research Institute
-License: Apache-2.0
 
 License: AGPL-3
                       GNU AFFERO GENERAL PUBLIC LICENSE
