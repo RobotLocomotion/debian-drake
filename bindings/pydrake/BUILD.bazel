@@ -301,6 +301,20 @@ drake_py_library(
     deps = [":all_py"],
 )
 
+# Roll-up for publicly acccessible testing utilities (for development with
+# workflows like drake-external-examples/drake_bazel_external).
+drake_py_library(
+    name = "test_utilities_py",
+    testonly = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        # N.B. We depend on pydrake so as to keep symmetry with the currently
+        # offered public targets (rollup only, no granular access).
+        ":pydrake",
+        "//bindings/pydrake/common/test_utilities",
+    ],
+)
+
 install(
     name = "install",
     install_tests = [
@@ -482,10 +496,20 @@ drake_py_unittest(
 )
 
 drake_py_unittest(
+    name = "geometry_render_engine_subclass_test",
+    flaky = True,
+    deps = [
+        ":geometry_py",
+        "//bindings/pydrake/common/test_utilities",
+        "//bindings/pydrake/systems:sensors_py",
+    ],
+)
+
+drake_py_unittest(
     name = "lcm_test",
     deps = [
         ":lcm_py",
-        "@lcmtypes_robotlocomotion//:lcmtypes_robotlocomotion_py",
+        "//lcmtypes:lcmtypes_drake_py",
     ],
 )
 

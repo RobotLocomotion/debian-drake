@@ -6,7 +6,7 @@ This page contains instructions on how to generate Drake's documentation,
 which uses a combination of
 [Jekyll](https://jekyllrb.com/),
 [Sphinx](http://www.sphinx-doc.org/en/stable/index.html), and
-[Doxygen](https://www.stack.nl/~dimitri/doxygen/).
+[Doxygen](https://www.doxygen.nl/index.html).
 This includes [Drake's main website](https://drake.mit.edu/) and
 API documentation
 ([C++](https://drake.mit.edu/doxygen_cxx/index.html) and
@@ -25,18 +25,16 @@ $ ./setup/ubuntu/install_prereqs.sh --with-doc-only
 
 # Drake's main website
 
-To preview changes locally at ``http://127.0.0.1:<n>``:
+To preview changes locally:
 
 ```
-$ bazel run //doc:serve_jekyll [-- --default_port <n>]
+$ bazel run //doc:pages -- --serve
 ```
-
-If not specified, the default port is 8000.
 
 To create output in the specified out_dir:
 
 ```
-$ bazel run //doc:gen_jekyll -- --out_dir
+$ bazel run //doc:pages -- --out_dir
 ```
 
 The output directory must not already exist.
@@ -47,19 +45,35 @@ To generate the C++ API documentation:
 
 ```
 $ cd drake
-$ bazel build //doc:doxygen
-$ bazel-bin/doc/doxygen [options]
-$ bazel-bin/doc/doxygen --help  # To learn about the possible options.
+$ bazel build //doc/doxygen_cxx:build
+$ bazel-bin/doc/doxygen_cxx/build [options]
+$ bazel-bin/doc/doxygen_cxx/build --help  # To learn about the possible options.
 ```
 
 To generate the Python API documentation:
 
 ```
-$ bazel run //bindings/pydrake/doc:serve_sphinx [-- --browser=false]
+$ bazel run //doc/pydrake:build -- --serve
 ```
 
-The contents of the Python API documentation are also available via
-``bazel build //bindings/pydrake/doc:sphinx.zip``.
+If you only need to preview a subset of the API, you can speed up the
+rebuild by listing a subset of module names on the command line:
+
+```
+$ bazel run //doc/pydrake:build -- --serve pydrake.common pydrake.math
+````
+
+# Style Guide
+
+To locally preview the Drake Style Guide:
+
+```
+$ bazel run //doc/styleguide:build -- --serve
+```
+
+To preview a local branch of the styleguide, set the
+[local_repository_override](https://github.com/RobotLocomotion/drake/blob/master/tools/workspace/README.md#exploring-github_archive-changes-from-a-local-clone)
+option in ``drake/tools/workspace/styleguide/`` before running the preview.
 
 # Continuous Integration
 
