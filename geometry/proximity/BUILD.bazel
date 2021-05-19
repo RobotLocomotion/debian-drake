@@ -38,6 +38,7 @@ drake_cc_package_library(
         ":mesh_intersection",
         ":mesh_plane_intersection",
         ":mesh_to_vtk",
+        ":mesh_traits",
         ":meshing_utilities",
         ":obb",
         ":obj_to_surface_mesh",
@@ -353,6 +354,7 @@ drake_cc_library(
         "volume_mesh_field.h",
     ],
     deps = [
+        ":mesh_traits",
         ":surface_mesh",
         ":volume_mesh",
         "//common",
@@ -422,6 +424,12 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "mesh_traits",
+    hdrs = ["mesh_traits.h"],
+    deps = ["//common:autodiff"],
+)
+
+drake_cc_library(
     name = "meshing_utilities",
     srcs = ["meshing_utilities.cc"],
     hdrs = ["meshing_utilities.h"],
@@ -478,7 +486,10 @@ drake_cc_library(
 drake_cc_library(
     name = "plane",
     hdrs = ["plane.h"],
-    deps = ["//common:essential"],
+    deps = [
+        ":mesh_traits",
+        "//common:essential",
+    ],
 )
 
 drake_cc_library(
@@ -526,6 +537,7 @@ drake_cc_library(
     srcs = ["surface_mesh.cc"],
     hdrs = ["surface_mesh.h"],
     deps = [
+        ":mesh_traits",
         "//common",
         "//math:geometric_transform",
     ],
@@ -546,6 +558,7 @@ drake_cc_library(
         "volume_mesh_field.h",
     ],
     deps = [
+        ":mesh_traits",
         "//common",
         "//geometry:geometry_ids",
     ],
@@ -791,6 +804,7 @@ drake_cc_googletest(
         ":make_box_mesh",
         ":mesh_field",
         "//common/test_utilities:eigen_matrix_compare",
+        "//math:autodiff",
         "//math:geometric_transform",
     ],
 )
@@ -802,6 +816,8 @@ drake_cc_googletest(
         ":mesh_half_space_intersection",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//math:autodiff",
+        "//math:gradient",
     ],
 )
 
@@ -811,6 +827,9 @@ drake_cc_googletest(
         ":mesh_intersection",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//math:autodiff",
+        "//math:gradient",
+        "//math:orthonormal_basis",
     ],
 )
 
@@ -821,6 +840,9 @@ drake_cc_googletest(
         ":mesh_plane_intersection",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//math:autodiff",
+        "//math:gradient",
+        "//math:orthonormal_basis",
     ],
 )
 
@@ -834,6 +856,13 @@ drake_cc_googletest(
         "//common:temp_directory",
         "//geometry:shape_specification",
         "//math:geometric_transform",
+    ],
+)
+
+drake_cc_googletest(
+    name = "mesh_traits_test",
+    deps = [
+        ":mesh_traits",
     ],
 )
 
@@ -898,6 +927,7 @@ drake_cc_googletest(
         ":plane",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//math:autodiff",
     ],
 )
 
@@ -907,6 +937,7 @@ drake_cc_googletest(
         ":posed_half_space",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+        "//math:autodiff",
     ],
 )
 
@@ -927,6 +958,7 @@ drake_cc_googletest(
     deps = [
         ":surface_mesh",
         "//common/test_utilities:eigen_matrix_compare",
+        "//math:autodiff",
         "//math:geometric_transform",
     ],
 )
@@ -937,6 +969,7 @@ drake_cc_googletest(
         ":mesh_field",
         ":volume_mesh",
         "//common/test_utilities:eigen_matrix_compare",
+        "//math:autodiff",
         "//math:geometric_transform",
     ],
 )

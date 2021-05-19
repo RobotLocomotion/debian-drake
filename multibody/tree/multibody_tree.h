@@ -1053,8 +1053,8 @@ class MultibodyTree {
       std::string_view name) const {
     const auto it = instance_name_to_index_.find(name);
     if (it == instance_name_to_index_.end()) {
-      throw std::logic_error(fmt::format("There is no model instance named '{}'"
-          "in the model.", name));
+      throw std::logic_error(fmt::format(
+          "There is no model instance named '{}' in the model.", name));
     }
     return it->second;
   }
@@ -1290,6 +1290,13 @@ class MultibodyTree {
       const Eigen::Ref<const MatrixX<T>>& p_BQi,
       const Frame<T>& frame_A,
       EigenPtr<MatrixX<T>> p_AQi) const;
+
+  // See MultibodyPlant method.
+  T CalcTotalMass(const systems::Context<T>& context) const;
+
+  // See MultibodyPlant method.
+  T CalcTotalMass(const systems::Context<T>& context,
+                  const std::vector<ModelInstanceIndex>& model_instances) const;
 
   // See MultibodyPlant method.
   Vector3<T> CalcCenterOfMassPositionInWorld(

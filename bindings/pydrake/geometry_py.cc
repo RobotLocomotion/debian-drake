@@ -976,13 +976,22 @@ void DoScalarIndependentDefinitions(py::module m) {
   {
     using Class = DrakeVisualizerParams;
     constexpr auto& cls_doc = doc.DrakeVisualizerParams;
-    py::class_<Class>(m, "DrakeVisualizerParams", cls_doc.doc)
+    py::class_<Class>(
+        m, "DrakeVisualizerParams", py::dynamic_attr(), cls_doc.doc)
         .def(ParamInit<Class>())
         .def_readwrite("publish_period", &DrakeVisualizerParams::publish_period,
             cls_doc.publish_period.doc)
         .def_readwrite("role", &DrakeVisualizerParams::role, cls_doc.role.doc)
         .def_readwrite("default_color", &DrakeVisualizerParams::default_color,
-            cls_doc.default_color.doc);
+            cls_doc.default_color.doc)
+        .def("__repr__", [](const Class& self) {
+          return py::str(
+              "DrakeVisualizerParams("
+              "publish_period={}, "
+              "role={}, "
+              "default_color={})")
+              .format(self.publish_period, self.role, self.default_color);
+        });
   }
 
   // Shape constructors
@@ -1274,11 +1283,14 @@ void DoScalarIndependentDefinitions(py::module m) {
       py_rvp::reference_internal, py::arg("diffuse"),
       doc.MakePhongIllustrationProperties.doc);
 
-  m.def("ReadObjToSurfaceMesh",
-      py::overload_cast<const std::string&, double>(
-          &geometry::ReadObjToSurfaceMesh),
+  m.def(
+      "ReadObjToSurfaceMesh",
+      [](const std::string& filename, double scale) {
+        return geometry::ReadObjToSurfaceMesh(filename, scale);
+      },
       py::arg("filename"), py::arg("scale") = 1.0,
-      doc.ReadObjToSurfaceMesh.doc_2args_filename_scale);
+      // N.B. We have not bound the optional "on_warning" argument.
+      doc.ReadObjToSurfaceMesh.doc_3args_filename_scale_on_warning);
 }
 
 void def_geometry(py::module m) {
