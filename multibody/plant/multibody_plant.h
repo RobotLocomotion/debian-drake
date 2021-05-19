@@ -914,7 +914,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// and _child_ bodies. The parent/child ordering defines the sign conventions
   /// for the generalized coordinates and the coordinate ordering for multi-DOF
   /// joints.
-  /// @image html multibody/plant/images/BodyParentChildJointCM.png width=50%
+  /// <!-- NOLINTNEXTLINE(whitespace/line_length) -->
+  /// @image html drake/multibody/plant/images/BodyParentChildJointCM.png width=50%
   /// Note: The previous figure also shows Pcm which is body P's center of mass
   /// and point Bcm which is body B's center of mass.
   ///
@@ -2439,6 +2440,31 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
         context, frame_B, p_BQi, frame_A, p_AQi);
   }
 
+  /// Calculates the total mass of all bodies in this MultibodyPlant.
+  /// @param[in] context Contains the state of the model.
+  /// @retval The total mass of all bodies or 0 if there are none.
+  /// @note The mass of the world_body() does not contribute to the total mass.
+  T CalcTotalMass(const systems::Context<T>& context) const {
+    this->ValidateContext(context);
+    return internal_tree().CalcTotalMass(context);
+  }
+
+  /// Calculates the total mass of all bodies contained in model_instances.
+  /// @param[in] context Contains the state of the model.
+  /// @param[in] model_instances Vector of selected model instances. This method
+  /// does not distinguish between welded, joint connected, or floating bodies.
+  /// @retval The total mass of all bodies belonging to a model instance in
+  ///   model_instances or 0 if model_instances is empty.
+  /// @note The mass of the world_body() does not contribute to the total mass
+  ///   and each body only contributes to the total mass once, even if the body
+  ///   has repeated occurence (instance) in model_instances.
+  T CalcTotalMass(
+      const systems::Context<T>& context,
+      const std::vector<ModelInstanceIndex>& model_instances) const {
+    this->ValidateContext(context);
+    return internal_tree().CalcTotalMass(context, model_instances);
+  }
+
   /// Calculates the position vector from the world origin Wo to the center of
   /// mass of all bodies in this MultibodyPlant, expressed in the world frame W.
   /// @param[in] context Contains the state of the model.
@@ -2451,13 +2477,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const systems::Context<T>& context) const {
     this->ValidateContext(context);
     return internal_tree().CalcCenterOfMassPositionInWorld(context);
-  }
-
-  DRAKE_DEPRECATED("2021-04-21", "Use CalcCenterOfMassPositionInWorld() "
-                   "instead of CalcCenterOfMassPosition().")
-  Vector3<T> CalcCenterOfMassPosition(
-      const systems::Context<T>& context) const {
-    return CalcCenterOfMassPositionInWorld(context);
   }
 
   /// Calculates the position vector from the world origin Wo to the center of
@@ -2479,14 +2498,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     this->ValidateContext(context);
     return internal_tree().
         CalcCenterOfMassPositionInWorld(context, model_instances);
-  }
-
-  DRAKE_DEPRECATED("2021-04-21", "Use CalcCenterOfMassPositionInWorld() "
-                   "instead of CalcCenterOfMassPosition().")
-  Vector3<T> CalcCenterOfMassPosition(
-      const systems::Context<T>& context,
-      const std::vector<ModelInstanceIndex>& model_instances) const {
-    return CalcCenterOfMassPositionInWorld(context, model_instances);
   }
 
   /// Calculates system center of mass translational velocity in world frame W.
@@ -4525,6 +4536,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     // AddJointLimitsPenaltyForces().
     std::vector<double> stiffness;
     std::vector<double> damping;
+    // If these joint limits will be ignored (because the plant uses continuous
+    // time) and we have not yet warned the user about that fact, this contains
+    // the warning message to be printed. Marked mutable because it's not part
+    // of our dynamics, so that we can clear it from a const method.
+    mutable std::string pending_warning_message;
   } joint_limits_parameters_;
 
   // Iteration order on this map DOES matter, and therefore we use an std::map.

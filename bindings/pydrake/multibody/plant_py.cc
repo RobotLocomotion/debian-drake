@@ -285,23 +285,15 @@ void DoScalarDependentDefinitions(py::module m, T) {
     // TODO(eric.cousineau): Include `CalcInverseDynamics` once there is an
     // overload that (a) services MBP directly and (b) uses body
     // association that is less awkward than implicit BodyNodeIndex.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     cls  // BR
-        .def("CalcCenterOfMassPosition",
-            WrapDeprecated(cls_doc.CalcCenterOfMassPosition.doc_deprecated,
-                overload_cast_explicit<Vector3<T>, const Context<T>&>(
-                    &Class::CalcCenterOfMassPosition)),
-            py::arg("context"), cls_doc.CalcCenterOfMassPosition.doc_deprecated)
-        .def("CalcCenterOfMassPosition",
-            WrapDeprecated(cls_doc.CalcCenterOfMassPosition.doc_deprecated,
-                overload_cast_explicit<Vector3<T>, const Context<T>&,
-                    const std::vector<ModelInstanceIndex>&>(
-                    &Class::CalcCenterOfMassPosition)),
+        .def("CalcTotalMass",
+            overload_cast_explicit<T, const Context<T>&>(&Class::CalcTotalMass),
+            py::arg("context"), cls_doc.CalcTotalMass.doc_1args)
+        .def("CalcTotalMass",
+            overload_cast_explicit<T, const Context<T>&,
+                const std::vector<ModelInstanceIndex>&>(&Class::CalcTotalMass),
             py::arg("context"), py::arg("model_instances"),
-            cls_doc.CalcCenterOfMassPosition.doc_deprecated);
-#pragma GCC diagnostic pop
-    cls  // BR
+            cls_doc.CalcTotalMass.doc_2args)
         .def("CalcCenterOfMassPositionInWorld",
             overload_cast_explicit<Vector3<T>, const Context<T>&>(
                 &Class::CalcCenterOfMassPositionInWorld),
@@ -735,7 +727,10 @@ void DoScalarDependentDefinitions(py::module m, T) {
             },
             py::arg("body"), cls_doc.GetBodiesWeldedTo.doc)
         .def("GetTopologyGraphvizString", &Class::GetTopologyGraphvizString,
-            cls_doc.GetTopologyGraphvizString.doc);
+            cls_doc.GetTopologyGraphvizString.doc)
+        .def("get_force_element", &Class::get_force_element,
+            py::arg("force_element_index"), py_rvp::reference_internal,
+            cls_doc.get_force_element.doc);
     // Geometry.
     cls  // BR
         .def("RegisterAsSourceForSceneGraph",

@@ -27,6 +27,8 @@ drake_cc_library(
     name = "kinematic_constraint",
     srcs = [
         "angle_between_vectors_constraint.cc",
+        "com_in_polyhedron_constraint.cc",
+        "com_position_constraint.cc",
         "distance_constraint.cc",
         "distance_constraint_utilities.cc",
         "gaze_target_constraint.cc",
@@ -39,6 +41,8 @@ drake_cc_library(
     ],
     hdrs = [
         "angle_between_vectors_constraint.h",
+        "com_in_polyhedron_constraint.h",
+        "com_position_constraint.h",
         "distance_constraint.h",
         "distance_constraint_utilities.h",
         "gaze_target_constraint.h",
@@ -119,6 +123,23 @@ drake_cc_googletest(
     deps = [
         ":inverse_kinematics_test_utilities",
         ":kinematic_constraint",
+    ],
+)
+
+drake_cc_googletest(
+    name = "com_position_constraint_test",
+    deps = [
+        ":inverse_kinematics_test_utilities",
+        ":kinematic_constraint",
+    ],
+)
+
+drake_cc_googletest(
+    name = "com_in_polyhedron_constraint_test",
+    deps = [
+        ":inverse_kinematics_test_utilities",
+        ":kinematic_constraint",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 

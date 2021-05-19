@@ -138,13 +138,6 @@ class Diagram : public System<T>, internal::SystemParentServiceInterface {
 
   std::unique_ptr<DiscreteValues<T>> AllocateDiscreteVariables() const final;
 
-  void DoCalcTimeDerivatives(const Context<T>& context,
-                             ContinuousState<T>* derivatives) const final;
-
-  void DoCalcImplicitTimeDerivativesResidual(
-      const Context<T>& context, const ContinuousState<T>& proposed_derivatives,
-      EigenPtr<VectorX<T>> residual) const final;
-
   /// Retrieves a reference to the subsystem with name @p name returned by
   /// get_name().
   /// @throws std::logic_error if a match cannot be found.
@@ -444,6 +437,13 @@ class Diagram : public System<T>, internal::SystemParentServiceInterface {
       const Context<T>& context,
       CompositeEventCollection<T>* event_info) const override;
 
+  void DoCalcTimeDerivatives(const Context<T>& context,
+                             ContinuousState<T>* derivatives) const final;
+
+  void DoCalcImplicitTimeDerivativesResidual(
+      const Context<T>& context, const ContinuousState<T>& proposed_derivatives,
+      EigenPtr<VectorX<T>> residual) const final;
+
   // A structural outline of a Diagram, produced by DiagramBuilder.
   struct Blueprint {
     // The ordered subsystem ports that are inputs to the entire diagram.
@@ -528,6 +528,11 @@ class Diagram : public System<T>, internal::SystemParentServiceInterface {
 
   // The map of subsystem inputs to inputs of this Diagram.
   std::map<InputPortLocator, InputPortIndex> input_port_map_;
+
+  // The index of a cache entry that stores a buffer of time data for use in
+  // managing events. It is only used in DoCalcNextUpdateTime(), but is
+  // allocated as a cache entry to avoid heap operations during simulation.
+  CacheIndex event_times_buffer_cache_index_{};
 
   // For all T, Diagram<T> considers DiagramBuilder<T> a friend, so that the
   // builder can set the internal state correctly.
