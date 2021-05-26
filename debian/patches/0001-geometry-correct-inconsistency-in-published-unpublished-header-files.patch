@@ -1,0 +1,456 @@
+From: Sean Curtis <sean.curtis@tri.global>
+Date: Fri, 21 May 2021 10:35:41 -0700
+Subject: geometry: Correct inconsistency in published/unpublished header
+ files
+
+There are a number of header files (that directly lead to including fcl)
+that are marked to be installed. However, there were three header files
+that *are* installed that included them directly.
+
+This removes those transitive references and shores up downstream code
+that lazily inherited headers via this path.
+---
+ geometry/proximity/BUILD.bazel                     |  5 +-
+ geometry/proximity/collision_filter_legacy.h       |  1 -
+ geometry/proximity/collisions_exist_callback.h     |  1 +
+ geometry/proximity/distance_to_shape_callback.h    |  1 +
+ geometry/proximity/make_box_field.cc               | 65 +++++++++++++++++
+ geometry/proximity/make_box_field.h                | 53 +-------------
+ geometry/proximity/make_cylinder_field.cc          | 84 ++++++++++++++++++++++
+ geometry/proximity/make_cylinder_field.h           | 64 +----------------
+ .../proximity/penetration_as_point_pair_callback.h |  1 +
+ .../proximity/test/characterization_utilities.h    |  2 +
+ .../penetration_as_point_pair_callback_test.cc     |  1 +
+ 11 files changed, 163 insertions(+), 115 deletions(-)
+ create mode 100644 geometry/proximity/make_box_field.cc
+ create mode 100644 geometry/proximity/make_cylinder_field.cc
+
+diff --git a/geometry/proximity/BUILD.bazel b/geometry/proximity/BUILD.bazel
+index 8384d0f..0b44993 100644
+--- a/geometry/proximity/BUILD.bazel
++++ b/geometry/proximity/BUILD.bazel
+@@ -74,7 +74,6 @@
+     name = "collision_filter_legacy",
+     hdrs = ["collision_filter_legacy.h"],
+     deps = [
+-        ":proximity_utilities",
+         "//common:essential",
+         "//common:sorted_vectors_have_intersection",
+     ],
+@@ -91,6 +90,7 @@
+     ],
+     deps = [
+         ":collision_filter_legacy",
++        ":proximity_utilities",
+         "//geometry:geometry_ids",
+         "@fcl",
+     ],
+@@ -221,6 +221,7 @@
+ 
+ drake_cc_library(
+     name = "make_box_field",
++    srcs = ["make_box_field.cc"],
+     hdrs = ["make_box_field.h"],
+     deps = [
+         ":distance_to_point_callback",
+@@ -246,10 +247,12 @@
+ 
+ drake_cc_library(
+     name = "make_cylinder_field",
++    srcs = ["make_cylinder_field.cc"],
+     hdrs = ["make_cylinder_field.h"],
+     deps = [
+         ":distance_to_point_callback",
+         ":mesh_field",
++        ":volume_to_surface_mesh",
+         "//common:essential",
+         "//common:unused",
+         "//geometry:shape_specification",
+diff --git a/geometry/proximity/collision_filter_legacy.h b/geometry/proximity/collision_filter_legacy.h
+index f41b1f8..5b7826f 100644
+--- a/geometry/proximity/collision_filter_legacy.h
++++ b/geometry/proximity/collision_filter_legacy.h
+@@ -8,7 +8,6 @@
+ #include "drake/common/drake_assert.h"
+ #include "drake/common/drake_copyable.h"
+ #include "drake/common/sorted_vectors_have_intersection.h"
+-#include "drake/geometry/proximity/proximity_utilities.h"
+ 
+ namespace drake {
+ namespace geometry {
+diff --git a/geometry/proximity/collisions_exist_callback.h b/geometry/proximity/collisions_exist_callback.h
+index f6b220f..2a42c83 100644
+--- a/geometry/proximity/collisions_exist_callback.h
++++ b/geometry/proximity/collisions_exist_callback.h
+@@ -5,6 +5,7 @@
+ #include "drake/common/drake_assert.h"
+ #include "drake/geometry/geometry_ids.h"
+ #include "drake/geometry/proximity/collision_filter_legacy.h"
++#include "drake/geometry/proximity/proximity_utilities.h"
+ 
+ namespace drake {
+ namespace geometry {
+diff --git a/geometry/proximity/distance_to_shape_callback.h b/geometry/proximity/distance_to_shape_callback.h
+index 413f75f..098d8f6 100644
+--- a/geometry/proximity/distance_to_shape_callback.h
++++ b/geometry/proximity/distance_to_shape_callback.h
+@@ -8,6 +8,7 @@
+ #include "drake/common/eigen_types.h"
+ #include "drake/geometry/geometry_ids.h"
+ #include "drake/geometry/proximity/collision_filter_legacy.h"
++#include "drake/geometry/proximity/proximity_utilities.h"
+ #include "drake/geometry/query_results/signed_distance_pair.h"
+ #include "drake/math/rigid_transform.h"
+ 
+diff --git a/geometry/proximity/make_box_field.cc b/geometry/proximity/make_box_field.cc
+new file mode 100644
+index 0000000..9b11ca2
+--- /dev/null
++++ b/geometry/proximity/make_box_field.cc
+@@ -0,0 +1,65 @@
++#include "drake/geometry/proximity/make_box_field.h"
++
++#include <utility>
++#include <vector>
++
++#include "drake/common/eigen_types.h"
++#include "drake/common/unused.h"
++#include "drake/geometry/proximity/distance_to_point_callback.h"
++
++namespace drake {
++namespace geometry {
++namespace internal {
++
++template <typename T>
++VolumeMeshFieldLinear<T, T> MakeBoxPressureField(
++    const Box& box, const VolumeMesh<T>* mesh_B,
++    const T elastic_modulus) {
++  DRAKE_DEMAND(elastic_modulus > T(0));
++  const Vector3<double> half_size = box.size() / 2.0;
++  const double min_half_size = half_size.minCoeff();
++
++  // TODO(DamrongGuoy): Switch to a better implementation in the future. The
++  //  current implementation has a number of limitations:
++  //  1. For simplicity, we use a scaling of distance to boundary, which is
++  //     not differentiable at points equally far from two or more faces of
++  //     the box.
++  //  2. Implicitly we impose the rigid core on the medial axis. In the
++  //     future, we will consider a rigid core as an offset of the box or
++  //     other shapes.
++  //  3. We do not have a mechanism to define a pressure field using barrier
++  //     functions.  One possibility is to generate the mesh in offset
++  //     layers, and define linear pressure fields in each offset with
++  //     different elastic modulus.
++
++  std::vector<T> pressure_values;
++  pressure_values.reserve(mesh_B->num_vertices());
++  for (const VolumeVertex<T>& vertex : mesh_B->vertices()) {
++    // V is a vertex of the mesh of the box with frame B.
++    const Vector3<T>& r_BV = vertex.r_MV();
++    // N is for the nearest point of V on the boundary of the box,
++    // and grad_B is the gradient vector of the signed distance function
++    // of the box at V, expressed in frame B.
++    const auto [r_BN, grad_B, is_V_on_edge_or_vertex] =
++        point_distance::DistanceToPoint<T>::ComputeDistanceToBox(half_size,
++                                                                 r_BV);
++    unused(is_V_on_edge_or_vertex);
++    T signed_distance = grad_B.dot(r_BV - r_BN);
++    // Map signed_distance ∈ [-min_half_size, 0] to extent e ∈ [0, 1],
++    // -min_half_size ⇝ 1, 0 ⇝ 0.
++    T extent = -signed_distance / T(min_half_size);
++    pressure_values.push_back(elastic_modulus * extent);
++  }
++
++  return VolumeMeshFieldLinear<T, T>("pressure", std::move(pressure_values),
++                                     mesh_B);
++}
++
++template VolumeMeshFieldLinear<double, double> MakeBoxPressureField(
++    const Box&, const VolumeMesh<double>*, const double);
++template VolumeMeshFieldLinear<AutoDiffXd, AutoDiffXd> MakeBoxPressureField(
++    const Box&, const VolumeMesh<AutoDiffXd>*, const AutoDiffXd);
++
++}  // namespace internal
++}  // namespace geometry
++}  // namespace drake
+diff --git a/geometry/proximity/make_box_field.h b/geometry/proximity/make_box_field.h
+index 89f3585..d899c57 100644
+--- a/geometry/proximity/make_box_field.h
++++ b/geometry/proximity/make_box_field.h
+@@ -1,13 +1,5 @@
+ #pragma once
+ 
+-#include <functional>
+-#include <tuple>
+-#include <utility>
+-#include <vector>
+-
+-#include "drake/common/eigen_types.h"
+-#include "drake/common/unused.h"
+-#include "drake/geometry/proximity/distance_to_point_callback.h"
+ #include "drake/geometry/proximity/volume_mesh.h"
+ #include "drake/geometry/proximity/volume_mesh_field.h"
+ #include "drake/geometry/shape_specification.h"
+@@ -36,48 +28,9 @@ namespace internal {
+                          to approximate the pressure field.
+  */
+ template <typename T>
+-VolumeMeshFieldLinear<T, T> MakeBoxPressureField(
+-    const Box& box, const VolumeMesh<T>* mesh_B,
+-    const T elastic_modulus) {
+-  DRAKE_DEMAND(elastic_modulus > T(0));
+-  const Vector3<double> half_size = box.size() / 2.0;
+-  const double min_half_size = half_size.minCoeff();
+-
+-  // TODO(DamrongGuoy): Switch to a better implementation in the future. The
+-  //  current implementation has a number of limitations:
+-  //  1. For simplicity, we use a scaling of distance to boundary, which is
+-  //     not differentiable at points equally far from two or more faces of
+-  //     the box.
+-  //  2. Implicitly we impose the rigid core on the medial axis. In the
+-  //     future, we will consider a rigid core as an offset of the box or
+-  //     other shapes.
+-  //  3. We do not have a mechanism to define a pressure field using barrier
+-  //     functions.  One possibility is to generate the mesh in offset
+-  //     layers, and define linear pressure fields in each offset with
+-  //     different elastic modulus.
+-
+-  std::vector<T> pressure_values;
+-  pressure_values.reserve(mesh_B->num_vertices());
+-  for (const VolumeVertex<T>& vertex : mesh_B->vertices()) {
+-    // V is a vertex of the mesh of the box with frame B.
+-    const Vector3<T>& r_BV = vertex.r_MV();
+-    // N is for the nearest point of V on the boundary of the box,
+-    // and grad_B is the gradient vector of the signed distance function
+-    // of the box at V, expressed in frame B.
+-    const auto [r_BN, grad_B, is_V_on_edge_or_vertex] =
+-        point_distance::DistanceToPoint<T>::ComputeDistanceToBox(half_size,
+-                                                                 r_BV);
+-    unused(is_V_on_edge_or_vertex);
+-    T signed_distance = grad_B.dot(r_BV - r_BN);
+-    // Map signed_distance ∈ [-min_half_size, 0] to extent e ∈ [0, 1],
+-    // -min_half_size ⇝ 1, 0 ⇝ 0.
+-    T extent = -signed_distance / T(min_half_size);
+-    pressure_values.push_back(elastic_modulus * extent);
+-  }
+-
+-  return VolumeMeshFieldLinear<T, T>("pressure", std::move(pressure_values),
+-                                     mesh_B);
+-}
++VolumeMeshFieldLinear<T, T> MakeBoxPressureField(const Box& box,
++                                                 const VolumeMesh<T>* mesh_B,
++                                                 const T elastic_modulus);
+ 
+ }  // namespace internal
+ }  // namespace geometry
+diff --git a/geometry/proximity/make_cylinder_field.cc b/geometry/proximity/make_cylinder_field.cc
+new file mode 100644
+index 0000000..cd432ac
+--- /dev/null
++++ b/geometry/proximity/make_cylinder_field.cc
+@@ -0,0 +1,84 @@
++#include "drake/geometry/proximity/make_cylinder_field.h"
++
++#include <algorithm>
++#include <utility>
++#include <vector>
++
++#include "drake/common/eigen_types.h"
++#include "drake/geometry/proximity/distance_to_point_callback.h"
++#include "drake/geometry/proximity/volume_to_surface_mesh.h"
++
++namespace drake {
++namespace geometry {
++namespace internal {
++
++template <typename T>
++VolumeMeshFieldLinear<T, T> MakeCylinderPressureField(
++    const Cylinder& cylinder, const VolumeMesh<T>* mesh_C,
++    const T elastic_modulus) {
++  DRAKE_DEMAND(elastic_modulus > T(0));
++  const double radius = cylinder.radius();
++  const double length = cylinder.length();
++  const double min_half_size = std::min(radius, length / 2.0);
++
++  // TODO(DamrongGuoy): Switch to a better implementation in the future. The
++  //  current implementation has a number of limitations:
++  //  1. For simplicity, we use a scaling of distance to boundary, which is
++  //     not differentiable at points equally far from two or more boundary
++  //     points of the cylinder.
++  //  2. Implicitly we impose the rigid core on the medial axis (or medial
++  //     surfaces for short cylinders).  In the future, we will consider a
++  //     rigid core as an offset of the cylinder or other shapes.
++  //  3. We do not have a mechanism to define a pressure field using barrier
++  //     functions.  One possibility is to generate the mesh in offset
++  //     layers, and define linear pressure fields in each offset with
++  //     different elastic modulus.
++
++  std::vector<T> pressure_values;
++  pressure_values.reserve(mesh_C->num_vertices());
++  // TODO(DamrongGuoy): The following three const variables (unused_id,
++  //  identity, and fcl_cylinder) are needed for applying DistanceToPoint
++  //  functor in the for loop. They are awkward to use here and introduce an
++  //  unnecessary dependency on FCL. In the future, we should either refactor
++  //  the distance-to-boundary calculation or use a different calculation (for
++  //  example, offset-based distance).
++  const GeometryId unused_id;
++  const auto identity = math::RigidTransform<T>::Identity();
++  const fcl::Cylinderd fcl_cylinder(radius, length);
++  for (const VolumeVertex<T>& vertex : mesh_C->vertices()) {
++    // V is a vertex of the cylinder mesh with frame C.
++    const Vector3<T>& r_CV = vertex.r_MV();
++    point_distance::DistanceToPoint<T> signed_distance_functor(
++        unused_id, identity, r_CV);
++    const T signed_distance = signed_distance_functor(fcl_cylinder).distance;
++    // Map signed_distance ∈ [-min_half_size, 0] to extent e ∈ [0, 1],
++    // -min_half_size ⇝ 1, 0 ⇝ 0.
++    const T extent = -signed_distance / T(min_half_size);
++    using std::min;
++    // Bound the pressure values in [0, E], where E is the elastic modulus.
++    pressure_values.push_back(min(elastic_modulus * extent, elastic_modulus));
++  }
++
++  // Make sure the boundary vertices have zero pressure. Numerical rounding
++  // can cause the boundary vertices to be slightly off the boundary surface
++  // of the cylinder.
++  std::vector<VolumeVertexIndex> boundary_vertices =
++      CollectUniqueVertices(IdentifyBoundaryFaces(mesh_C->tetrahedra()));
++  for (VolumeVertexIndex bv : boundary_vertices) {
++    pressure_values[bv] = T(0.);
++  }
++
++  return VolumeMeshFieldLinear<T, T>("pressure(Pa)",
++                                     std::move(pressure_values), mesh_C);
++}
++
++template VolumeMeshFieldLinear<double, double> MakeCylinderPressureField(
++    const Cylinder&, const VolumeMesh<double>*, const double);
++
++template VolumeMeshFieldLinear<AutoDiffXd, AutoDiffXd>
++MakeCylinderPressureField(const Cylinder&, const VolumeMesh<AutoDiffXd>*,
++                          const AutoDiffXd);
++
++}  // namespace internal
++}  // namespace geometry
++}  // namespace drake
+diff --git a/geometry/proximity/make_cylinder_field.h b/geometry/proximity/make_cylinder_field.h
+index 4d33292..ba56cba 100644
+--- a/geometry/proximity/make_cylinder_field.h
++++ b/geometry/proximity/make_cylinder_field.h
+@@ -1,14 +1,7 @@
+ #pragma once
+ 
+-#include <algorithm>
+-#include <utility>
+-#include <vector>
+-
+-#include "drake/common/eigen_types.h"
+-#include "drake/geometry/proximity/distance_to_point_callback.h"
+ #include "drake/geometry/proximity/volume_mesh.h"
+ #include "drake/geometry/proximity/volume_mesh_field.h"
+-#include "drake/geometry/proximity/volume_to_surface_mesh.h"
+ #include "drake/geometry/shape_specification.h"
+ 
+ namespace drake {
+@@ -57,62 +50,7 @@ namespace internal {
+ template <typename T>
+ VolumeMeshFieldLinear<T, T> MakeCylinderPressureField(
+     const Cylinder& cylinder, const VolumeMesh<T>* mesh_C,
+-    const T elastic_modulus) {
+-  DRAKE_DEMAND(elastic_modulus > T(0));
+-  const double radius = cylinder.radius();
+-  const double length = cylinder.length();
+-  const double min_half_size = std::min(radius, length / 2.0);
+-
+-  // TODO(DamrongGuoy): Switch to a better implementation in the future. The
+-  //  current implementation has a number of limitations:
+-  //  1. For simplicity, we use a scaling of distance to boundary, which is
+-  //     not differentiable at points equally far from two or more boundary
+-  //     points of the cylinder.
+-  //  2. Implicitly we impose the rigid core on the medial axis (or medial
+-  //     surfaces for short cylinders).  In the future, we will consider a
+-  //     rigid core as an offset of the cylinder or other shapes.
+-  //  3. We do not have a mechanism to define a pressure field using barrier
+-  //     functions.  One possibility is to generate the mesh in offset
+-  //     layers, and define linear pressure fields in each offset with
+-  //     different elastic modulus.
+-
+-  std::vector<T> pressure_values;
+-  pressure_values.reserve(mesh_C->num_vertices());
+-  // TODO(DamrongGuoy): The following three const variables (unused_id,
+-  //  identity, and fcl_cylinder) are needed for applying DistanceToPoint
+-  //  functor in the for loop. They are awkward to use here and introduce an
+-  //  unnecessary dependency on FCL. In the future, we should either refactor
+-  //  the distance-to-boundary calculation or use a different calculation (for
+-  //  example, offset-based distance).
+-  const GeometryId unused_id;
+-  const auto identity = math::RigidTransform<T>::Identity();
+-  const fcl::Cylinderd fcl_cylinder(radius, length);
+-  for (const VolumeVertex<T>& vertex : mesh_C->vertices()) {
+-    // V is a vertex of the cylinder mesh with frame C.
+-    const Vector3<T>& r_CV = vertex.r_MV();
+-    point_distance::DistanceToPoint<T> signed_distance_functor(
+-        unused_id, identity, r_CV);
+-    const T signed_distance = signed_distance_functor(fcl_cylinder).distance;
+-    // Map signed_distance ∈ [-min_half_size, 0] to extent e ∈ [0, 1],
+-    // -min_half_size ⇝ 1, 0 ⇝ 0.
+-    const T extent = -signed_distance / T(min_half_size);
+-    using std::min;
+-    // Bound the pressure values in [0, E], where E is the elastic modulus.
+-    pressure_values.push_back(min(elastic_modulus * extent, elastic_modulus));
+-  }
+-
+-  // Make sure the boundary vertices have zero pressure. Numerical rounding
+-  // can cause the boundary vertices to be slightly off the boundary surface
+-  // of the cylinder.
+-  std::vector<VolumeVertexIndex> boundary_vertices =
+-      CollectUniqueVertices(IdentifyBoundaryFaces(mesh_C->tetrahedra()));
+-  for (VolumeVertexIndex bv : boundary_vertices) {
+-    pressure_values[bv] = T(0.);
+-  }
+-
+-  return VolumeMeshFieldLinear<T, T>("pressure(Pa)",
+-                                     std::move(pressure_values), mesh_C);
+-}
++    const T elastic_modulus);
+ 
+ }  // namespace internal
+ }  // namespace geometry
+diff --git a/geometry/proximity/penetration_as_point_pair_callback.h b/geometry/proximity/penetration_as_point_pair_callback.h
+index c698382..02c1d4e 100644
+--- a/geometry/proximity/penetration_as_point_pair_callback.h
++++ b/geometry/proximity/penetration_as_point_pair_callback.h
+@@ -7,6 +7,7 @@
+ 
+ #include "drake/geometry/proximity/collision_filter_legacy.h"
+ #include "drake/geometry/query_results/penetration_as_point_pair.h"
++#include "drake/math/rigid_transform.h"
+ 
+ namespace drake {
+ namespace geometry {
+diff --git a/geometry/proximity/test/characterization_utilities.h b/geometry/proximity/test/characterization_utilities.h
+index f2199ce..1e26a99 100644
+--- a/geometry/proximity/test/characterization_utilities.h
++++ b/geometry/proximity/test/characterization_utilities.h
+@@ -20,7 +20,9 @@
+ 
+ #include "drake/common/default_scalars.h"
+ #include "drake/common/unused.h"
++#include "drake/geometry/geometry_ids.h"
+ #include "drake/geometry/proximity/collision_filter_legacy.h"
++#include "drake/geometry/shape_specification.h"
+ #include "drake/math/rigid_transform.h"
+ 
+ namespace drake {
+diff --git a/geometry/proximity/test/penetration_as_point_pair_callback_test.cc b/geometry/proximity/test/penetration_as_point_pair_callback_test.cc
+index 4cd135f..5443728 100644
+--- a/geometry/proximity/test/penetration_as_point_pair_callback_test.cc
++++ b/geometry/proximity/test/penetration_as_point_pair_callback_test.cc
+@@ -8,6 +8,7 @@
+ #include "drake/common/eigen_types.h"
+ #include "drake/common/test_utilities/eigen_matrix_compare.h"
+ #include "drake/common/test_utilities/expect_throws_message.h"
++#include "drake/geometry/proximity/proximity_utilities.h"
+ #include "drake/math/autodiff.h"
+ #include "drake/math/autodiff_gradient.h"
+ #include "drake/math/rigid_transform.h"

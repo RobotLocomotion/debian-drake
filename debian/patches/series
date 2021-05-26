@@ -1,0 +1,3 @@
+0001-geometry-correct-inconsistency-in-published-unpublished-header-files.patch
+0002-pydrake-remove-spurious-documentation-header-dependencies.patch
+0003-mkdoc-work-around-a-problematic-deprecation-example.patch

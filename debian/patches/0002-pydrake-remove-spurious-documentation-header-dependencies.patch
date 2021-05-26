@@ -1,0 +1,37 @@
+From: Jeremy Nimmer <jeremy.nimmer@tri.global>
+Date: Fri, 21 May 2021 11:40:43 -0700
+Subject: pydrake: Remove spurious documentation header dependencies
+
+These were added in 6f37fd67 at a time when our pydrake linking was broken.
+We were linking the examples' libraries outside of libdrake.so, so their
+headers were not part of libdrake's headers, so for mkdoc to find them we
+needed to list them here individually.
+
+Now that we link the examples correctly (i.e., directly into libdrake.so),
+we no longer need to feed the redundant dependencies to mkdoc.
+
+As of bazel 4.1, the redundant headers actually break mkdoc, because we try
+to add these headers twice, with the second path spelling not matching any
+valid include path.
+---
+ bindings/pydrake/BUILD.bazel | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/bindings/pydrake/BUILD.bazel b/bindings/pydrake/BUILD.bazel
+index 1e40722..885d69c 100644
+--- a/bindings/pydrake/BUILD.bazel
++++ b/bindings/pydrake/BUILD.bazel
+@@ -65,13 +65,6 @@
+     root_name = "pydrake_doc",
+     targets = [
+         "//tools/install/libdrake:drake_headers",
+-        "//examples/compass_gait:compass_gait",
+-        "//examples/manipulation_station:manipulation_station",
+-        "//examples/manipulation_station:manipulation_station_hardware_interface",  # noqa
+-        "//examples/pendulum:pendulum_plant",
+-        "//examples/quadrotor:quadrotor_plant",
+-        "//examples/rimless_wheel:rimless_wheel",
+-        "//examples/van_der_pol:van_der_pol",
+     ],
+ )
+ 
