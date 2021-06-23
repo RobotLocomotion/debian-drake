@@ -25,6 +25,8 @@
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/discrete_contact_pair.h"
+#include "drake/multibody/plant/discrete_update_manager.h"
+#include "drake/multibody/plant/physical_model.h"
 #include "drake/multibody/plant/tamsi_solver.h"
 #include "drake/multibody/topology/multibody_graph.h"
 #include "drake/multibody/tree/force_element.h"
@@ -64,6 +66,11 @@ struct HydroelasticContactInfoAndBodySpatialForces {
   std::vector<HydroelasticContactInfo<T>> contact_info;
 };
 
+// Forward declaration.
+template <typename>
+class MultibodyPlantModelAttorney;
+template <typename>
+class MultibodyPlantDiscreteUpdateManagerAttorney;
 }  // namespace internal
 
 // TODO(amcastro-tri): Add a section on contact models in
@@ -781,6 +788,21 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     X_WB_default_list_ = other.X_WB_default_list_;
     contact_model_ = other.contact_model_;
     penetration_allowance_ = other.penetration_allowance_;
+    // Note: The physical models must be cloned before `FinalizePlantOnly()` is
+    // called because `FinalizePlantOnly()` has to allocate system resources
+    // requested by physical models.
+    for (auto& model : other.physical_models_) {
+      auto cloned_model = model->template CloneToScalar<T>();
+      // TODO(xuchenhan-tri): Rework physical model and discrete update manager
+      //  to eliminate the requirement on the order that they are called with
+      //  respect to Finalize().
+
+      // AddPhysicalModel can't be called here because it's post-finalize. We
+      // have to manually disable scalars that the cloned physical model do not
+      // support.
+      RemoveUnsupportedScalars(*cloned_model);
+      physical_models_.emplace_back(std::move(cloned_model));
+    }
 
     DeclareSceneGraphPorts();
 
@@ -798,6 +820,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     // on the new MultibodyTree on U. Therefore we only Finalize the plant's
     // internals (and not the MultibodyTree).
     FinalizePlantOnly();
+
+    // Note: The discrete update manager needs to be copied *after* the plant is
+    // finalized.
+    if (other.discrete_update_manager_ != nullptr) {
+      SetDiscreteUpdateManager(
+          other.discrete_update_manager_->template CloneToScalar<T>());
+    }
   }
 
   /// Creates a rigid body with the provided name and spatial inertia.  This
@@ -903,7 +932,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   template <template<typename Scalar> class JointType>
   const JointType<T>& AddJoint(std::unique_ptr<JointType<T>> joint) {
     DRAKE_MBP_THROW_IF_FINALIZED();
-    static_assert(std::is_convertible<JointType<T>*, Joint<T>*>::value,
+    static_assert(std::is_convertible_v<JointType<T>*, Joint<T>*>,
                   "JointType must be a sub-class of Joint<T>.");
     RegisterJointInGraph(*joint);
     return this->mutable_tree().AddJoint(std::move(joint));
@@ -992,7 +1021,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const std::optional<math::RigidTransform<double>>& X_BM, Args&&... args) {
     // TODO(Mitiguy) Per discussion in PR# 13961 and issues #12789 and #13040,
     //  consider changing frame F to frame Jp and changing frame M to frame Jc.
-    static_assert(std::is_base_of<Joint<T>, JointType<T>>::value,
+    static_assert(std::is_base_of_v<Joint<T>, JointType<T>>,
                   "JointType<T> must be a sub-class of Joint<T>.");
 
     const Frame<T>* frame_on_parent{nullptr};
@@ -1566,32 +1595,66 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   void set_contact_model(ContactModel model);
 
 #ifndef DRAKE_DOXYGEN_CXX
-  // (Experimental) set_contact_solver() should only be called by advanced
+  // TODO(xuchenhan-tri): Remove SetContactSolver() once
+  //  SetDiscreteUpdateManager() stabilizes.
+  // (Experimental) SetContactSolver() should only be called by advanced
   // developers wanting to try out their custom contact solvers. We choose not
   // to show it in public documentations rather than making it private with
   // friends.
   // @param solver The contact solver to be used for simulations of discrete
   // models with frictional contact. Discrete updates will use this solver after
   // this call.
-  // @pre solver must not be nullptr.
-  // @pre SolverType must be a subclass of
-  // multibody::contact_solvers::internal::ContactSolver.
-  // @returns a mutable reference to `solver`, now owned by `this`
-  // MultibodyPlant.
-  template <class SolverType>
-  SolverType& set_contact_solver(std::unique_ptr<SolverType> solver) {
+  // @pre solver != nullptr.
+  // @note `this` MultibodyPlant will no longer support scalar conversion to or
+  // from symbolic::Expression after a call to this method.
+  void SetContactSolver(
+      std::unique_ptr<contact_solvers::internal::ContactSolver<T>> solver) {
     DRAKE_DEMAND(solver != nullptr);
-    static_assert(std::is_base_of<contact_solvers::internal::ContactSolver<T>,
-                                  SolverType>::value,
-                  "SolverType must be a sub-class of ContactSolver.");
-    SolverType* solver_ptr = solver.get();
     contact_solver_ = std::move(solver);
-    return *solver_ptr;
+  }
+
+  // (Experimental) SetDiscreteUpdateManager() should only be called by advanced
+  // developers wanting to try out their custom time stepping strategies,
+  // including contact resolution. We choose not to show it in public
+  // documentations rather than making it private with friends. With this method
+  // MultibodyPlant takes ownership of `manager`.
+  //
+  // @note Setting a contact manager bypasses the mechanism to set a different
+  // contact solver with SetContactSolver(). Use only one of these two
+  // experimental mechanims but never both.
+  //
+  // @param manager
+  //   After this call the new manager is used to advance discrete states.
+  // @pre manager != nullptr.
+  // @throws std::exception if called pre-finalize. See Finalize().
+  // @note `this` MultibodyPlant will no longer support scalar conversion to or
+  // from symbolic::Expression after a call to this method.
+  void SetDiscreteUpdateManager(
+      std::unique_ptr<internal::DiscreteUpdateManager<T>> manager);
+
+  // (Experimental) AddPhysicalModel() should only be called by advanced
+  // developers wanting to try out their new physical models. We choose not to
+  // show it in public documentations rather than making it private with
+  // friends. With this method MultibodyPlant takes ownership of `model` and
+  // calls its DeclareSystemResources() method at Finalize(), giving specific
+  // physical model implementations a chance to declare the system resources it
+  // needs.
+  //
+  // @param model After this call the model is owned by `this` MultibodyPlant.
+  // @pre model != nullptr.
+  // @throws std::exception if called post-finalize. See Finalize().
+  // @note `this` MultibodyPlant will no longer support scalar conversion to or
+  // from symbolic::Expression after a call to this method.
+  void AddPhysicalModel(std::unique_ptr<internal::PhysicalModel<T>> model);
+
+  const std::vector<std::unique_ptr<internal::PhysicalModel<T>>>&
+  physical_models() const {
+    return physical_models_;
   }
 #endif
 
   // TODO(amcastro-tri): per work in #13064, we should reconsider whether to
-  // deprecate/remove this method alltogether or at least promote to proper
+  // deprecate/remove this method altogether or at least promote to proper
   // camel case per GSG.
   /// Sets the penetration allowance used to estimate the coefficients in the
   /// penalty method used to impose non-penetration among bodies. Refer to the
@@ -2457,7 +2520,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///   model_instances or 0 if model_instances is empty.
   /// @note The mass of the world_body() does not contribute to the total mass
   ///   and each body only contributes to the total mass once, even if the body
-  ///   has repeated occurence (instance) in model_instances.
+  ///   has repeated occurrence (instance) in model_instances.
   T CalcTotalMass(
       const systems::Context<T>& context,
       const std::vector<ModelInstanceIndex>& model_instances) const {
@@ -2468,11 +2531,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Calculates the position vector from the world origin Wo to the center of
   /// mass of all bodies in this MultibodyPlant, expressed in the world frame W.
   /// @param[in] context Contains the state of the model.
-  /// @retval p_WScm_W position vector from Wo to Scm expressed in world frame
+  /// @retval p_WoScm_W position vector from Wo to Scm expressed in world frame
   /// W, where Scm is the center of mass of the system S stored by `this` plant.
   /// @throws std::exception if `this` has no body except world_body().
-  /// @throws std::exception if mₛ ≤ 0 (mₛ is the mass of `this` system S).
-  /// @note The world_body() is ignored.
+  /// @throws std::exception if mₛ ≤ 0 (where mₛ is the mass of system S).
+  /// @note The world_body() is ignored.  p_WoScm_W = ∑ (mᵢ pᵢ) / mₛ, where
+  /// mₛ = ∑ mᵢ, mᵢ is the mass of the iᵗʰ body, and pᵢ is Bcm's position vector
+  /// from Wo expressed in frame W (Bcm is the center of mass of the iᵗʰ body).
   Vector3<T> CalcCenterOfMassPositionInWorld(
       const systems::Context<T>& context) const {
     this->ValidateContext(context);
@@ -2480,18 +2545,20 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   }
 
   /// Calculates the position vector from the world origin Wo to the center of
-  /// mass of all bodies contained in model_instances, expressed in the world
-  /// frame W.
+  /// mass of all non-world bodies contained in model_instances, expressed in
+  /// the world frame W.
   /// @param[in] context Contains the state of the model.
-  /// @param[in] model_instances Vector of selected model instances. This method
-  /// does not distinguish between welded, joint connected, or floating bodies.
-  /// @retval p_WScm_W position vector from world origin Wo to Scm expressed in
+  /// @param[in] model_instances Vector of selected model instances.  If a model
+  /// instance is repeated in the vector (unusual), it is only counted once.
+  /// @retval p_WoScm_W position vector from world origin Wo to Scm expressed in
   /// the world frame W, where Scm is the center of mass of the system S of
-  /// bodies contained in model_instances.
-  /// @throws std::exception if model_instance only has world_model_instance(),
-  /// i.e., model_instances has no body except world_body().
-  /// @throws std::exception if mₛ ≤ 0 (mₛ is the mass of the system S).
-  /// @note The world_body() is ignored.
+  /// non-world bodies contained in model_instances.
+  /// @throws std::exception if model_instances is empty or only has world body.
+  /// @throws std::exception if mₛ ≤ 0 (where mₛ is the mass of system S).
+  /// @note The world_body() is ignored.  p_WoScm_W = ∑ (mᵢ pᵢ) / mₛ, where
+  /// mₛ = ∑ mᵢ, mᵢ is the mass of the iᵗʰ body contained in model_instances,
+  /// and pᵢ is Bcm's position vector from Wo expressed in frame W
+  /// (Bcm is the center of mass of the iᵗʰ body).
   Vector3<T> CalcCenterOfMassPositionInWorld(
       const systems::Context<T>& context,
       const std::vector<ModelInstanceIndex>& model_instances) const {
@@ -2505,8 +2572,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @retval v_WScm_W Scm's translational velocity in frame W, expressed in W,
   /// where Scm is the center of mass of the system S stored by `this` plant.
   /// @throws std::exception if `this` has no body except world_body().
-  /// @throws std::exception if mₛ ≤ 0 (mₛ is the mass of `this` system S).
-  /// @note The world_body() is ignored.
+  /// @throws std::exception if mₛ ≤ 0 (where mₛ is the mass of system S).
+  /// @note The world_body() is ignored.  v_WScm_W = ∑ (mᵢ vᵢ) / mₛ, where
+  /// mₛ = ∑ mᵢ, mᵢ is the mass of the iᵗʰ body, and vᵢ is Bcm's velocity in
+  /// world W (Bcm is the center of mass of the iᵗʰ body).
   Vector3<T> CalcCenterOfMassTranslationalVelocityInWorld(
       const systems::Context<T>& context) const {
     return internal_tree().CalcCenterOfMassTranslationalVelocityInWorld(
@@ -2515,13 +2584,17 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   /// Calculates system center of mass translational velocity in world frame W.
   /// @param[in] context The context contains the state of the model.
-  /// @param[in] model_instances The vector of selected model instances.
+  /// @param[in] model_instances Vector of selected model instances.  If a model
+  /// instance is repeated in the vector (unusual), it is only counted once.
   /// @retval v_WScm_W Scm's translational velocity in frame W, expressed in W,
-  /// where Scm is the center of mass of the system S in model_instances.
-  /// @throws std::exception if `this` has no body except world_body().
-  /// @throws std::exception if mₛ ≤ 0 (mₛ is the mass of `this` system S).
-  /// @note This method does not distinguish between welded bodies, joint
-  /// connected bodies, and free bodies.  The world_body() is ignored.
+  /// where Scm is the center of mass of the system S of non-world bodies
+  /// contained in model_instances.
+  /// @throws std::exception if model_instances is empty or only has world body.
+  /// @throws std::exception if mₛ ≤ 0 (where mₛ is the mass of system S).
+  /// @note The world_body() is ignored.  v_WScm_W = ∑ (mᵢ vᵢ) / mₛ, where
+  /// mₛ = ∑ mᵢ, mᵢ is the mass of the iᵗʰ body contained in model_instances,
+  /// and vᵢ is Bcm's velocity in world W expressed in frame W
+  /// (Bcm is the center of mass of the iᵗʰ body).
   Vector3<T> CalcCenterOfMassTranslationalVelocityInWorld(
       const systems::Context<T>& context,
       const std::vector<ModelInstanceIndex>& model_instances) const {
@@ -2655,6 +2728,31 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return internal_tree().CalcInverseDynamics(
         context, known_vdot, external_forces);
   }
+
+#ifdef DRAKE_DOXYGEN_CXX
+  // MultibodyPlant uses the NVI implementation of
+  // CalcImplicitTimeDerivativesResidual from
+  // MultibodyTreeSystem::DoCalcImplicitTimeDerivativesResidual.  We provide the
+  // public facing documentation for it here.
+
+  /// MultibodyPlant implements the
+  /// systems::System::CalcImplicitTimeDerivativesResidual method when the plant
+  /// is modeled as a continuous-time system, returning one residual for each
+  /// multibody state.  In particular, the first num_positions() residuals are
+  /// given by <pre>
+  ///   q̇_proposed - N(q)⋅v
+  /// </pre>
+  /// and the final num_velocities() residuals are given by <pre>
+  ///   CalcInverseDynamics(context, v_proposed)
+  /// </pre>
+  /// including all actuator and applied forces.
+  /// @see systems::System::CalcImplicitTimeDerivativesResidual for more
+  /// details.
+  void CalcImplicitTimeDerivativesResidual(
+      const systems::Context<T>& context,
+      const systems::ContinuousState<T>& proposed_derivatives,
+      EigenPtr<VectorX<T>> residual) const;
+#endif
 
   /// Computes the combined force contribution of ForceElement objects in the
   /// model. A ForceElement can apply forces as a spatial force per body or as
@@ -3839,6 +3937,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Friend class to facilitate testing.
   friend class MultibodyPlantTester;
 
+  // Friend attorney class to provide private access to those internal::
+  // implementations that need it.
+  friend class internal::MultibodyPlantModelAttorney<T>;
+  friend class internal::MultibodyPlantDiscreteUpdateManagerAttorney<T>;
+
   // This struct stores in one single place all indexes related to
   // MultibodyPlant specific cache entries. These are initialized at Finalize()
   // when the plant declares its cache entries.
@@ -3851,7 +3954,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex hydro_fallback;
     systems::CacheIndex point_pairs;
     systems::CacheIndex spatial_contact_forces_continuous;
-    systems::CacheIndex tamsi_solver_results;
+    systems::CacheIndex contact_solver_results;
   };
 
   // Constructor to bridge testing from MultibodyTree to MultibodyPlant.
@@ -3878,9 +3981,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   // MemberSceneGraph is an alias for SceneGraph<T>, except when T = Expression.
   struct SceneGraphStub;
-  using MemberSceneGraph = typename std::conditional<
-      std::is_same<T, symbolic::Expression>::value,
-      SceneGraphStub, geometry::SceneGraph<T>>::type;
+  using MemberSceneGraph = typename std::conditional_t<
+      std::is_same_v<T, symbolic::Expression>,
+      SceneGraphStub, geometry::SceneGraph<T>>;
 
   // Returns the SceneGraph that pre-Finalize geometry operations should
   // interact with.  In most cases, that will be whatever the user has passed
@@ -3915,7 +4018,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::pair<T, T> GetPointContactParameters(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const {
-    if constexpr (std::is_same<symbolic::Expression, T>::value) {
+    if constexpr (std::is_same_v<symbolic::Expression, T>) {
       throw std::domain_error(
           "This method doesn't support T = symbolic::Expression.");
     }
@@ -3937,7 +4040,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   const CoulombFriction<double>& GetCoulombFriction(
       geometry::GeometryId id,
       const geometry::SceneGraphInspector<T>& inspector) const {
-    if constexpr (std::is_same<symbolic::Expression, T>::value) {
+    if constexpr (std::is_same_v<symbolic::Expression, T>) {
       throw std::domain_error(
           "This method doesn't support T = symbolic::Expression.");
     }
@@ -4061,19 +4164,18 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const VectorX<T>& stiffness, const VectorX<T>& damping,
       const VectorX<T>& mu, const VectorX<T>& v0, const VectorX<T>& fn0) const;
 
-  // This method uses the time stepping method described in
-  // TamsiSolver to advance the model's state stored in
-  // `context0` taking a time step of size time_step().
+  // This method performs the computation of the impulses to advance the state
+  // stored in `context0` in time.
   // Contact forces and velocities are computed and stored in `results`. See
   // ContactSolverResults for further details on the returned data.
-  void CalcTamsiResults(
+  void CalcContactSolverResults(
       const drake::systems::Context<T>& context0,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
-  // Eval version of the method CalcTamsiResults().
-  const contact_solvers::internal::ContactSolverResults<T>& EvalTamsiResults(
-      const systems::Context<T>& context) const {
-    return this->get_cache_entry(cache_indexes_.tamsi_solver_results)
+  // Eval version of the method CalcContactSolverResults().
+  const contact_solvers::internal::ContactSolverResults<T>&
+  EvalContactSolverResults(const systems::Context<T>& context) const {
+    return this->get_cache_entry(cache_indexes_.contact_solver_results)
         .template Eval<contact_solvers::internal::ContactSolverResults<T>>(
             context);
   }
@@ -4294,8 +4396,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Helper method to compute penetration point pairs for a given `context`.
   // Having this as a separate method allows us to control specializations for
   // different scalar types.
-  std::vector<geometry::PenetrationAsPointPair<T>>
-  CalcPointPairPenetrations(const systems::Context<T>& context) const;
+  void CalcPointPairPenetrations(
+      const systems::Context<T>& context,
+      std::vector<geometry::PenetrationAsPointPair<T>>*) const;
 
   // This helper method combines the friction properties for each pair of
   // contact points in `point_pairs` according to
@@ -4375,6 +4478,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       MatrixX<T>* Jn, MatrixX<T>* Jt,
       std::vector<math::RotationMatrix<T>>* R_WC_set = nullptr) const;
 
+  // Populates the ContactJacobians cache struct via CalcDiscreteContactPairs
+  // and CalcNormalAndTangentContactJacobians.
+  void CalcContactJacobiansCache(
+      const systems::Context<T>& context,
+      internal::ContactJacobians<T>* contact_jacobians) const;
+
   // Evaluates the contact Jacobians for the given state of the plant stored in
   // `context`.
   // This method first evaluates the point pair penetrations in the system for
@@ -4424,7 +4533,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                               joint.child_body().index());
   }
 
-  // Helper to invoke our TamsiSolver.
+  // Helper to invoke our TamsiSolver. This method and `CallContactSolver()` are
+  // disjoint methods. One should only use one or the other, but not both.
   void CallTamsiSolver(
       const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
       const VectorX<T>& minus_tau, const VectorX<T>& fn0, const MatrixX<T>& Jn,
@@ -4432,13 +4542,21 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const VectorX<T>& damping, const VectorX<T>& mu,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
-  // Helper to invoke ContactSolver when one is available.
+  // Helper to invoke ContactSolver when one is available. This method and
+  // `CallTamsiSolver()` are disjoint methods. One should only use one or the
+  // other, but not both.
   void CallContactSolver(
+      contact_solvers::internal::ContactSolver<T>* contact_solver,
       const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
       const VectorX<T>& minus_tau, const VectorX<T>& phi0, const MatrixX<T>& Jc,
       const VectorX<T>& stiffness, const VectorX<T>& damping,
       const VectorX<T>& mu,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
+
+  // Removes `this` MultibodyPlant's ability to convert to the scalar types
+  // unsupported by the given `component`.
+  void RemoveUnsupportedScalars(
+      const internal::ScalarConvertibleComponent<T>& component);
 
   // Geometry source identifier for this system to interact with geometry
   // system. It is made optional for plants that do not register geometry
@@ -4656,8 +4774,20 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // The solver used when the plant is modeled as a discrete system.
   std::unique_ptr<TamsiSolver<T>> tamsi_solver_;
 
-  // When not the nullptr, this is the solver to be used for discrete updates.
+  // TODO(xuchenhan-tri): Entirely remove the contact_solver_ back door by the
+  // newer design using DiscreteUpdateManager. When not the nullptr, this is the
+  // solver to be used for discrete updates.
   std::unique_ptr<contact_solvers::internal::ContactSolver<T>> contact_solver_;
+
+  // When not the nullptr, this manager class is used to advance discrete
+  // states.
+  // TODO(amcastro-tri): migrate the entirety of computations related to contact
+  // resolution into a default contact manager.
+  std::unique_ptr<internal::DiscreteUpdateManager<T>>
+      discrete_update_manager_;
+
+  // (Experimental) The vector of physical models owned by MultibodyPlant.
+  std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;
 
   hydroelastics::internal::HydroelasticEngine<T> hydroelastics_engine_;
 
@@ -4789,6 +4919,25 @@ struct AddMultibodyPlantSceneGraphResult final {
   geometry::SceneGraph<T>* scene_graph_ptr{};
 };
 
+namespace internal {
+// Combines the contact stiffness and dissipation parameters from two bodies in
+// contact to create the contact stiffness and dissipation to be used for the
+// contact pair.
+// @tparam_default_scalar
+template <typename T>
+std::pair<T, T> CombinePointContactParameters(const T& k1, const T& k2,
+                                              const T& d1, const T& d2) {
+  // Simple utility to detect 0 / 0. As it is used in this method, denom
+  // can only be zero if num is also zero, so we'll simply return zero.
+  auto safe_divide = [](const T& num, const T& denom) {
+    return denom == 0.0 ? 0.0 : num / denom;
+  };
+  return std::pair(
+      safe_divide(k1 * k2, k1 + k2),                                   // k
+      safe_divide(k2, k1 + k2) * d1 + safe_divide(k1, k1 + k2) * d2);  // d
+}
+}  // namespace internal
+
 #ifndef DRAKE_DOXYGEN_CXX
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
 // See the .cc file for an explanation why we specialize these methods.
@@ -4796,9 +4945,9 @@ template <>
 typename MultibodyPlant<symbolic::Expression>::SceneGraphStub&
 MultibodyPlant<symbolic::Expression>::member_scene_graph();
 template <>
-std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>
-MultibodyPlant<symbolic::Expression>::CalcPointPairPenetrations(
-    const systems::Context<symbolic::Expression>&) const;
+void MultibodyPlant<symbolic::Expression>::CalcPointPairPenetrations(
+    const systems::Context<symbolic::Expression>&,
+    std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>*) const;
 template <>
 std::vector<CoulombFriction<double>>
 MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
@@ -4825,6 +4974,7 @@ void MultibodyPlant<symbolic::Expression>::CalcHydroelasticWithFallback(
     internal::HydroelasticFallbackCacheData<symbolic::Expression>*) const;
 template <>
 void MultibodyPlant<symbolic::Expression>::CallContactSolver(
+    contact_solvers::internal::ContactSolver<symbolic::Expression>*,
     const symbolic::Expression&, const VectorX<symbolic::Expression>&,
     const MatrixX<symbolic::Expression>&, const VectorX<symbolic::Expression>&,
     const VectorX<symbolic::Expression>&, const MatrixX<symbolic::Expression>&,

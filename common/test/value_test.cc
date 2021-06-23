@@ -89,10 +89,10 @@ GTEST_TEST(ValueTest, DefaultConstructor) {
   const AbstractValue& value_bare_struct = Value<BareStruct>();
   EXPECT_EQ(0, value_bare_struct.get_value<BareStruct>().data);
 
-  static_assert(!std::is_default_constructible<Value<CopyableInt>>::value,
+  static_assert(!std::is_default_constructible_v<Value<CopyableInt>>,
                 "Value<CopyableInt>() should not work.");
 
-  static_assert(!std::is_default_constructible<Value<CloneableInt>>::value,
+  static_assert(!std::is_default_constructible_v<Value<CloneableInt>>,
                 "Value<CloneableInt>() should not work.");
 
   const AbstractValue& value_move_or_clone_int = Value<MoveOrCloneInt>();
@@ -151,6 +151,11 @@ TYPED_TEST(TypedValueTest, Make) {
   // explicit construction of T{42}.
   auto abstract_value = AbstractValue::Make<T>(T{42});
   EXPECT_EQ(42, abstract_value->template get_value<T>());
+}
+
+GTEST_TEST(TypedValueTest, MakeDefault) {
+  EXPECT_EQ(0, AbstractValue::Make<int>()->get_value<int>());
+  EXPECT_EQ("", AbstractValue::Make<std::string>()->get_value<std::string>());
 }
 
 GTEST_TEST(ValueTest, NiceTypeName) {

@@ -48,7 +48,7 @@ LeafSystem<T>::~LeafSystem() {}
 
 template <typename T>
 std::unique_ptr<CompositeEventCollection<T>>
-LeafSystem<T>::AllocateCompositeEventCollection() const {
+LeafSystem<T>::DoAllocateCompositeEventCollection() const {
   return std::make_unique<LeafCompositeEventCollection<T>>();
 }
 
@@ -144,6 +144,7 @@ void LeafSystem<T>::SetDefaultState(
     const Context<T>& context, State<T>* state) const {
   this->ValidateContext(context);
   DRAKE_DEMAND(state != nullptr);
+  this->ValidateCreatedForThisSystem(state);
   ContinuousState<T>& xc = state->get_mutable_continuous_state();
   xc.SetFromVector(model_continuous_state_vector_->get_value());
 
@@ -171,6 +172,7 @@ template <typename T>
 void LeafSystem<T>::SetDefaultParameters(
     const Context<T>& context, Parameters<T>* parameters) const {
   this->ValidateContext(context);
+  this->ValidateCreatedForThisSystem(parameters);
   for (int i = 0; i < parameters->num_numeric_parameter_groups(); i++) {
     BasicVector<T>& p = parameters->get_mutable_numeric_parameter(i);
     auto model_vector = model_numeric_parameters_.CloneVectorModel<T>(i);
@@ -206,7 +208,7 @@ std::unique_ptr<SystemSymbolicInspector> MakeSystemSymbolicInspector(
     const System<T>& system) {
   using symbolic::Expression;
   // We use different implementations when T = Expression or not.
-  if constexpr (std::is_same<T, Expression>::value) {
+  if constexpr (std::is_same_v<T, Expression>) {
     return std::make_unique<SystemSymbolicInspector>(system);
   } else {
     std::unique_ptr<System<Expression>> converted = system.ToSymbolicMaybe();
@@ -301,6 +303,15 @@ std::multimap<int, int> LeafSystem<T>::GetDirectFeedthroughs() const {
   return feedthrough;
 }
 
+namespace {
+// The type of our cache entry for temporary storage.  Any function that uses
+// this storage is responsible for resetting any values prior to their use.
+template <typename T>
+struct Scratch {
+  std::vector<const Event<T>*> next_events;
+};
+}  // namespace
+
 template <typename T>
 LeafSystem<T>::LeafSystem() : LeafSystem(SystemScalarConverter{}) {}
 
@@ -313,6 +324,20 @@ LeafSystem<T>::LeafSystem(SystemScalarConverter converter)
       AllocateForcedDiscreteUpdateEventCollection());
   this->set_forced_unrestricted_update_events(
       AllocateForcedUnrestrictedUpdateEventCollection());
+
+  // This cache entry maintains temporary storage. Since this declaration
+  // invokes no invalidation support from the cache system, code that uses
+  // this storage is responsible for ensuring that no stale data is used.
+  scratch_cache_index_ =
+      this->DeclareCacheEntry(
+          "scratch",
+          []() { return AbstractValue::Make<Scratch<T>>(); },
+          [](const ContextBase&, AbstractValue*) { /* do nothing */ },
+          {this->nothing_ticket()}).cache_index();
+
+  per_step_events_.set_system_id(this->get_system_id());
+  initialization_events_.set_system_id(this->get_system_id());
+  model_discrete_state_.set_system_id(this->get_system_id());
 }
 
 template <typename T>
@@ -350,9 +375,17 @@ void LeafSystem<T>::DoCalcNextUpdateTime(
     return;
   }
 
+  // Use a cached vector to calculate which events to fire. Clear it to ensure
+  // that no data values leak between invocations.
+  Scratch<T>& scratch =
+      this->get_cache_entry(scratch_cache_index_)
+      .get_mutable_cache_entry_value(context)
+      .template GetMutableValueOrThrow<Scratch<T>>();
+  std::vector<const Event<T>*>& next_events = scratch.next_events;
+  next_events.clear();
+
   // Find the minimum next sample time across all declared periodic events,
   // and store the set of declared events that will occur at that time.
-  std::vector<const Event<T>*> next_events;
   for (const auto& event_pair : periodic_events_) {
     const PeriodicEventData& event_data = event_pair.first;
     const Event<T>* const event = event_pair.second.get();
@@ -465,8 +498,10 @@ std::unique_ptr<Parameters<T>> LeafSystem<T>::AllocateParameters() const {
     DRAKE_ASSERT(param != nullptr);
     abstract_params.emplace_back(std::move(param));
   }
-  return std::make_unique<Parameters<T>>(std::move(numeric_params),
-                                         std::move(abstract_params));
+  auto result = std::make_unique<Parameters<T>>(std::move(numeric_params),
+                                                std::move(abstract_params));
+  result->set_system_id(this->get_system_id());
+  return result;
 }
 
 template <typename T>
@@ -616,6 +651,7 @@ InputPort<T>& LeafSystem<T>::DeclareAbstractInputPort(
                                 kAbstractValued, 0 /* size */);
 }
 
+// (This function is deprecated.)
 template <typename T>
 InputPort<T>& LeafSystem<T>::DeclareVectorInputPort(
     const BasicVector<T>& model_vector,
@@ -623,6 +659,7 @@ InputPort<T>& LeafSystem<T>::DeclareVectorInputPort(
   return DeclareVectorInputPort(kUseDefaultName, model_vector, random_type);
 }
 
+// (This function is deprecated.)
 template <typename T>
 InputPort<T>& LeafSystem<T>::DeclareAbstractInputPort(
     const AbstractValue& model_value) {
@@ -653,6 +690,7 @@ LeafOutputPort<T>& LeafSystem<T>::DeclareAbstractOutputPort(
   return port;
 }
 
+// (This function is deprecated.)
 template <typename T>
 LeafOutputPort<T>& LeafSystem<T>::DeclareVectorOutputPort(
     const BasicVector<T>& model_vector,
@@ -663,6 +701,7 @@ LeafOutputPort<T>& LeafSystem<T>::DeclareVectorOutputPort(
                                  std::move(prerequisites_of_calc));
 }
 
+// (This function is deprecated.)
 template <typename T>
 LeafOutputPort<T>& LeafSystem<T>::DeclareAbstractOutputPort(
     typename LeafOutputPort<T>::AllocCallback alloc_function,
@@ -928,6 +967,7 @@ LeafOutputPort<T>& LeafSystem<T>::CreateCachedLeafOutputPort(
   auto port = internal::FrameworkFactory::Make<LeafOutputPort<T>>(
       this,  // implicit_cast<const System<T>*>(this)
       this,  // implicit_cast<const SystemBase*>(this)
+      this->get_system_id(),
       std::move(name),
       oport_index, this->assign_next_dependency_ticket(),
       fixed_size.has_value() ? kVectorValued : kAbstractValued,

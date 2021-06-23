@@ -337,7 +337,7 @@ std::unique_ptr<ContactSurface<T>>
 ComputeContactSurfaceFromSoftHalfSpaceRigidMesh(
     GeometryId id_S, const math::RigidTransform<T>& X_WS, double pressure_scale,
     GeometryId id_R, const SurfaceMesh<double>& mesh_R,
-    const Bvh<SurfaceMesh<double>>& bvh_R,
+    const Bvh<Obb, SurfaceMesh<double>>& bvh_R,
     const math::RigidTransform<T>& X_WR) {
   std::vector<SurfaceFaceIndex> tri_indices;
   tri_indices.reserve(mesh_R.num_elements());
@@ -353,8 +353,7 @@ ComputeContactSurfaceFromSoftHalfSpaceRigidMesh(
     }
     return BvttCallbackResult::Continue;
   };
-  const math::RigidTransform<T> X_RW = X_WR.inverse();
-  const math::RigidTransform<T> X_RS = X_RW * X_WS;
+  const math::RigidTransform<T> X_RS = X_WR.InvertAndCompose(X_WS);
   // To collide half space with _BVH_ we need (as documented):
   //   - HalfSpace and
   //   - X_PH - pose of the hierarchy in the primitive frame or, in this
@@ -454,13 +453,13 @@ ConstructSurfaceMeshFromMeshHalfspaceIntersection(
 template std::unique_ptr<ContactSurface<double>>
 ComputeContactSurfaceFromSoftHalfSpaceRigidMesh(
     GeometryId, const math::RigidTransform<double>&, double, GeometryId,
-    const SurfaceMesh<double>&, const Bvh<SurfaceMesh<double>>&,
+    const SurfaceMesh<double>&, const Bvh<Obb, SurfaceMesh<double>>&,
     const math::RigidTransform<double>&);
 
 template std::unique_ptr<ContactSurface<AutoDiffXd>>
 ComputeContactSurfaceFromSoftHalfSpaceRigidMesh(
     GeometryId, const math::RigidTransform<AutoDiffXd>&, double, GeometryId,
-    const SurfaceMesh<double>&, const Bvh<SurfaceMesh<double>>&,
+    const SurfaceMesh<double>&, const Bvh<Obb, SurfaceMesh<double>>&,
     const math::RigidTransform<AutoDiffXd>&);
 
 }  // namespace internal

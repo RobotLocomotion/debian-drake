@@ -101,6 +101,12 @@ std::ostream& QuadraticCost::DoDisplay(
   return DisplayCost(*this, os, "QuadraticCost", vars);
 }
 
+bool QuadraticCost::CheckHessianPsd() {
+  Eigen::LDLT<Eigen::MatrixXd> ldlt_solver;
+  ldlt_solver.compute(Q_);
+  return ldlt_solver.isPositive();
+}
+
 shared_ptr<QuadraticCost> MakeQuadraticErrorCost(
     const Eigen::Ref<const MatrixXd>& Q,
     const Eigen::Ref<const VectorXd>& x_desired) {
@@ -109,6 +115,14 @@ shared_ptr<QuadraticCost> MakeQuadraticErrorCost(
 }
 
 shared_ptr<QuadraticCost> MakeL2NormCost(
+    const Eigen::Ref<const Eigen::MatrixXd>& A,
+    const Eigen::Ref<const Eigen::VectorXd>& b) {
+  const double c = b.dot(b);
+  return make_shared<QuadraticCost>(2 * A.transpose() * A,
+                                    -2 * A.transpose() * b, c);
+}
+
+shared_ptr<QuadraticCost> Make2NormSquaredCost(
     const Eigen::Ref<const Eigen::MatrixXd>& A,
     const Eigen::Ref<const Eigen::VectorXd>& b) {
   const double c = b.dot(b);

@@ -85,7 +85,7 @@ std::multimap<int, int> Diagram<T>::GetDirectFeedthroughs() const {
 
 template <typename T>
 std::unique_ptr<CompositeEventCollection<T>>
-Diagram<T>::AllocateCompositeEventCollection() const {
+Diagram<T>::DoAllocateCompositeEventCollection() const {
   const int num_systems = num_subsystems();
   std::vector<std::unique_ptr<CompositeEventCollection<T>>> subevents(
       num_systems);
@@ -104,6 +104,7 @@ void Diagram<T>::SetDefaultState(const Context<T>& context,
   auto diagram_context = dynamic_cast<const DiagramContext<T>*>(&context);
   DRAKE_DEMAND(diagram_context != nullptr);
 
+  this->ValidateCreatedForThisSystem(state);
   auto diagram_state = dynamic_cast<DiagramState<T>*>(state);
   DRAKE_DEMAND(diagram_state != nullptr);
 
@@ -121,6 +122,8 @@ void Diagram<T>::SetDefaultParameters(const Context<T>& context,
   this->ValidateContext(context);
   auto diagram_context = dynamic_cast<const DiagramContext<T>*>(&context);
   DRAKE_DEMAND(diagram_context != nullptr);
+
+  this->ValidateCreatedForThisSystem(params);
 
   int numeric_parameter_offset = 0;
   int abstract_parameter_offset = 0;
@@ -161,6 +164,7 @@ void Diagram<T>::SetDefaultParameters(const Context<T>& context,
         std::make_unique<DiscreteValues<T>>(numeric_params));
     subparameters.set_abstract_parameters(
         std::make_unique<AbstractValues>(abstract_params));
+    subparameters.set_system_id(subcontext.get_system_id());
 
     registered_systems_[i]->SetDefaultParameters(subcontext, &subparameters);
   }
@@ -173,6 +177,7 @@ void Diagram<T>::SetRandomState(const Context<T>& context, State<T>* state,
   auto diagram_context = dynamic_cast<const DiagramContext<T>*>(&context);
   DRAKE_DEMAND(diagram_context != nullptr);
 
+  this->ValidateCreatedForThisSystem(state);
   auto diagram_state = dynamic_cast<DiagramState<T>*>(state);
   DRAKE_DEMAND(diagram_state != nullptr);
 
@@ -191,6 +196,8 @@ void Diagram<T>::SetRandomParameters(const Context<T>& context,
   this->ValidateContext(context);
   auto diagram_context = dynamic_cast<const DiagramContext<T>*>(&context);
   DRAKE_DEMAND(diagram_context != nullptr);
+
+  this->ValidateCreatedForThisSystem(params);
 
   int numeric_parameter_offset = 0;
   int abstract_parameter_offset = 0;
@@ -229,6 +236,7 @@ void Diagram<T>::SetRandomParameters(const Context<T>& context,
         std::make_unique<DiscreteValues<T>>(numeric_params));
     subparameters.set_abstract_parameters(
         std::make_unique<AbstractValues>(abstract_params));
+    subparameters.set_system_id(subcontext.get_system_id());
 
     registered_systems_[i]->SetRandomParameters(subcontext, &subparameters,
                                                 generator);
@@ -276,7 +284,10 @@ std::unique_ptr<DiscreteValues<T>> Diagram<T>::AllocateDiscreteVariables()
   for (const auto& system : registered_systems_) {
     sub_discretes.push_back(system->AllocateDiscreteVariables());
   }
-  return std::make_unique<DiagramDiscreteValues<T>>(std::move(sub_discretes));
+  auto result =
+      std::make_unique<DiagramDiscreteValues<T>>(std::move(sub_discretes));
+  result->set_system_id(this->get_system_id());
+  return result;
 }
 
 template <typename T>
@@ -354,7 +365,7 @@ template <typename T>
 const ContinuousState<T>& Diagram<T>::GetSubsystemDerivatives(
     const System<T>& subsystem,
     const ContinuousState<T>& derivatives) const {
-  System<T>::ValidateCreatedForThisSystem(&derivatives);
+  this->ValidateCreatedForThisSystem(&derivatives);
   auto diagram_derivatives =
       dynamic_cast<const DiagramContinuousState<T>*>(&derivatives);
   DRAKE_DEMAND(diagram_derivatives != nullptr);
@@ -366,6 +377,7 @@ template <typename T>
 const DiscreteValues<T>& Diagram<T>::GetSubsystemDiscreteValues(
     const System<T>& subsystem,
     const DiscreteValues<T>& discrete_values) const {
+  this->ValidateCreatedForThisSystem(&discrete_values);
   auto diagram_discrete_state =
       dynamic_cast<const DiagramDiscreteValues<T>*>(&discrete_values);
   DRAKE_DEMAND(diagram_discrete_state != nullptr);
@@ -377,6 +389,7 @@ template <typename T>
 const CompositeEventCollection<T>&
 Diagram<T>::GetSubsystemCompositeEventCollection(const System<T>& subsystem,
     const CompositeEventCollection<T>& events) const {
+  this->ValidateCreatedForThisSystem(&events);
   auto ret = DoGetTargetSystemCompositeEventCollection(subsystem, &events);
   DRAKE_DEMAND(ret != nullptr);
   return *ret;
@@ -386,6 +399,7 @@ template <typename T>
 CompositeEventCollection<T>&
 Diagram<T>::GetMutableSubsystemCompositeEventCollection(
     const System<T>& subsystem, CompositeEventCollection<T>* events) const {
+  this->ValidateCreatedForThisSystem(events);
   auto ret = DoGetMutableTargetSystemCompositeEventCollection(
       subsystem, events);
   DRAKE_DEMAND(ret != nullptr);
@@ -403,6 +417,7 @@ State<T>& Diagram<T>::GetMutableSubsystemState(const System<T>& subsystem,
 template <typename T>
 State<T>& Diagram<T>::GetMutableSubsystemState(const System<T>& subsystem,
                                                State<T>* state) const {
+  this->ValidateCreatedForThisSystem(state);
   auto ret = DoGetMutableTargetSystemState(subsystem, state);
   DRAKE_DEMAND(ret != nullptr);
   return *ret;
@@ -411,6 +426,7 @@ State<T>& Diagram<T>::GetMutableSubsystemState(const System<T>& subsystem,
 template <typename T>
 const State<T>& Diagram<T>::GetSubsystemState(const System<T>& subsystem,
                                               const State<T>& state) const {
+  this->ValidateCreatedForThisSystem(&state);
   auto ret = DoGetTargetSystemState(subsystem, &state);
   DRAKE_DEMAND(ret != nullptr);
   return *ret;
@@ -927,8 +943,10 @@ std::unique_ptr<ContextBase> Diagram<T>::DoAllocateContext() const {
   }
 
   // Creates this diagram's composite data structures that collect its
-  // subsystems' resources, which must have already been allocated above.
-  // No dependencies are set up in these two calls.
+  // subsystems' resources, which must have already been allocated above. No
+  // dependencies are set up in these two calls. Note that MakeState()
+  // establishes the system_id labels for all the helper objects at the root of
+  // the state tree.
   context->MakeParameters();
   context->MakeState();
 
@@ -1232,12 +1250,11 @@ BaseStuff* Diagram<T>::GetSubsystemStuff(
     std::function<BaseStuff&(DerivedStuff*, SubsystemIndex)> get_child_stuff)
     const {
   static_assert(
-      std::is_same<BaseStuff,
-                   typename std::remove_pointer<BaseStuff>::type>::value,
+      std::is_same_v<BaseStuff, typename std::remove_pointer_t<BaseStuff>>,
       "BaseStuff cannot be a pointer");
   static_assert(
-      std::is_same<DerivedStuff,
-                   typename std::remove_pointer<DerivedStuff>::type>::value,
+      std::is_same_v<DerivedStuff,
+                     typename std::remove_pointer_t<DerivedStuff>>,
       "DerivedStuff cannot be a pointer");
 
   DRAKE_DEMAND(my_stuff != nullptr);
@@ -1459,7 +1476,7 @@ void Diagram<T>::Initialize(std::unique_ptr<Blueprint> blueprint) {
   // Identify the intersection of the subsystems' scalar conversion support.
   // Remove all conversions that at least one subsystem did not support.
   SystemScalarConverter& this_scalar_converter =
-      SystemImpl::get_mutable_system_scalar_converter(this);
+      this->get_mutable_system_scalar_converter();
   for (const auto& system : registered_systems_) {
     this_scalar_converter.RemoveUnlessAlsoSupportedBy(
         system->get_system_scalar_converter());
@@ -1516,6 +1533,7 @@ void Diagram<T>::ExportOutput(const OutputPortLocator& port, std::string name) {
   auto diagram_port = internal::FrameworkFactory::Make<DiagramOutputPort<T>>(
       this,  // implicit_cast<const System<T>*>(this)
       this,  // implicit_cast<SystemBase*>(this)
+      this->get_system_id(),
       std::move(name), OutputPortIndex(this->num_output_ports()),
       this->assign_next_dependency_ticket(), &source_output_port,
       GetSystemIndexOrAbort(&source_output_port.get_system()));

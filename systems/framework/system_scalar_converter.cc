@@ -31,6 +31,11 @@ void SystemScalarConverter::Insert(
   DRAKE_ASSERT(insert_result.second);
 }
 
+void SystemScalarConverter::Remove(const std::type_info& t_info,
+                                   const std::type_info& u_info) {
+  funcs_.erase(Key(t_info, u_info));
+}
+
 const SystemScalarConverter::ErasedConverterFunc* SystemScalarConverter::Find(
     const std::type_info& t_info, const std::type_info& u_info) const {
   const auto& key = Key{t_info, u_info};

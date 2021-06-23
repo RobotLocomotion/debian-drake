@@ -1,5 +1,7 @@
 #include "drake/geometry/proximity/contact_surface_utility.h"
 
+#include <algorithm>
+
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 
@@ -193,6 +195,46 @@ Vector3<T> CalcPolygonCentroid(
 }
 
 template <typename T>
+Vector3<T> CalcPolygonCentroid(const std::vector<Vector3<T>>& p_FVs,
+                               const Vector3<T>& n_F) {
+  int num_vertices = p_FVs.size();
+  std::vector<SurfaceVertexIndex> polygon(num_vertices);
+  std::iota(polygon.begin(), polygon.end(), SurfaceVertexIndex(0));
+
+  std::vector<SurfaceVertex<T>> vertices_F;
+  std::transform(p_FVs.begin(), p_FVs.end(), std::back_inserter(vertices_F),
+                 [](const Vector3<T>& p_FV) -> SurfaceVertex<T> {
+                   return SurfaceVertex(p_FV);
+                 });
+
+  return CalcPolygonCentroid(polygon, n_F, vertices_F);
+}
+
+template <typename T>
+T CalcPolygonArea(const std::vector<Vector3<T>>& p_FVs,
+                  const Vector3<T>& nhat_F) {
+  int num_vertices = p_FVs.size();
+  DRAKE_DEMAND(num_vertices >= 3);
+
+  T total_double_area{0};
+  const Vector3<T>& p_FA = p_FVs[0];
+  for (int i = 2; i < num_vertices; ++i) {
+    // Adding area of sub-triangles of the given polygon. For example, the
+    // polygon V₀V₁V₂V₃V₄ will have these sub-triangles:
+    //  i    triangle ABC
+    //  2       V₀V₁V₂
+    //  3       V₀V₂V₃
+    //  4       V₀V₃V₄
+    const Vector3<T> p_FB = p_FVs[i-1];
+    const Vector3<T> p_FC = p_FVs[i];
+    const Vector3<T> ABxAC_F = (p_FB - p_FA).cross(p_FC - p_FA);
+    T double_area = ABxAC_F.dot(nhat_F);
+    total_double_area += double_area;
+  }
+  return total_double_area / 2;
+}
+
+template <typename T>
 void AddPolygonToMeshData(
     const std::vector<SurfaceVertexIndex>& polygon,
     const Vector3<T>& n_F,
@@ -221,6 +263,71 @@ void AddPolygonToMeshData(
     v2 = polygon[i];
     faces->emplace_back(v1, v2, centroid_index);
   }
+}
+
+template <typename T>
+void AddPolygonToMeshDataAsOneTriangle(
+    const std::vector<Vector3<T>>& polygon_F, const Vector3<T>& nhat_F,
+    std::vector<SurfaceFace>* faces,
+    std::vector<SurfaceVertex<T>>* vertices_F) {
+  DRAKE_DEMAND(faces != nullptr);
+  DRAKE_DEMAND(vertices_F != nullptr);
+  DRAKE_DEMAND(polygon_F.size() >= 3);
+  const T polygon_area = CalcPolygonArea(polygon_F, nhat_F);
+  if (polygon_area < kMinimumPolygonArea) {
+    return;
+  }
+
+  // Locations of vertices of the representative triangle.
+  Vector3<T> p_FVs[3];
+  if (polygon_F.size() == 3) {
+    p_FVs[0] = polygon_F[0];
+    p_FVs[1] = polygon_F[1];
+    p_FVs[2] = polygon_F[2];
+  } else {
+    Vector3<T> p_FC = CalcPolygonCentroid(polygon_F, nhat_F);
+
+    // We will set the representative triangle as an isosceles right triangle
+    // in a local frame G such that its third basis vector Gz_F, expressed in
+    // frame F, is the same as the face normal vector nhat_F. The triangle
+    // has centroid C (coincident with the polygon's centroid) at Go, and its
+    // two edges V₀V₁ and V₀V₂ are parallel to Gx and Gy respectively, as shown
+    // in the following picture (Gz points outward from the screen).
+    //
+    //               Gy
+    //               ^
+    //               |
+    //        V₂ ●   |
+    //           x x |
+    //           x   x
+    //        l  x   | x
+    //           x C ○---x--------> Gx
+    //           x         x
+    //       V₀  ● x x x x x ●
+    //                 l     V₁
+    //
+    // The two edges of the triangle in Gx and Gy directions have the same
+    // length l such that the triangle has the same area as the polygon:
+    //      l²/2 = polygon_area
+    //      l    = √(2 * polygon_area)
+    // N.B. We should have positive polygon_area, so the scalar type AutoDiffXd
+    // would be fine with sqrt().
+    const T l = sqrt(2. * polygon_area);
+    // Pass axis_index = 2, so that Gz_F = R_FG.col(2) = nhat_F.
+    const auto R_FG = math::RotationMatrix<T>::MakeFromOneUnitVector(nhat_F, 2);
+    const Vector3<T> Gx_F = R_FG.col(0);
+    const Vector3<T> Gy_F = R_FG.col(1);
+    p_FVs[0] = p_FC + (l / 3) * (   -Gx_F      - Gy_F);  // V₀ #NOLINT
+    p_FVs[1] = p_FC + (l / 3) * (2 * Gx_F      - Gy_F);  // V₁ #NOLINT
+    p_FVs[2] = p_FC + (l / 3) * (   -Gx_F + 2. * Gy_F);  // V₂ #NOLINT
+  }
+
+  const int n = vertices_F->size();
+  const int v[3] = {n, n + 1, n + 2};
+  faces->emplace_back(v);
+  vertices_F->emplace_back(p_FVs[0]);
+  vertices_F->emplace_back(p_FVs[1]);
+  vertices_F->emplace_back(p_FVs[2]);
 }
 
 template <typename T>
@@ -256,6 +363,18 @@ Vector3<AutoDiffXd> CalcPolygonCentroid(
     const Vector3<AutoDiffXd>& n_F,
     const std::vector<SurfaceVertex<AutoDiffXd>>& vertices_F);
 
+template Vector3<double> CalcPolygonCentroid(
+    const std::vector<Vector3<double>>&, const Vector3<double>&);
+
+template Vector3<AutoDiffXd> CalcPolygonCentroid(
+    const std::vector<Vector3<AutoDiffXd>>&, const Vector3<AutoDiffXd>&);
+
+template double CalcPolygonArea(const std::vector<Vector3<double>>&,
+                                const Vector3<double>&);
+
+template AutoDiffXd CalcPolygonArea(const std::vector<Vector3<AutoDiffXd>>&,
+                                    const Vector3<AutoDiffXd>&);
+
 template void AddPolygonToMeshData(
     const std::vector<SurfaceVertexIndex>& polygon,
     const Vector3<double>& n_F,
@@ -267,6 +386,14 @@ template void AddPolygonToMeshData(
     const Vector3<AutoDiffXd>& n_F,
     std::vector<SurfaceFace>* faces,
     std::vector<SurfaceVertex<AutoDiffXd>>* vertices_F);
+
+template void AddPolygonToMeshDataAsOneTriangle(
+    const std::vector<Vector3<double>>&, const Vector3<double>&,
+    std::vector<SurfaceFace>*, std::vector<SurfaceVertex<double>>*);
+
+template void AddPolygonToMeshDataAsOneTriangle(
+    const std::vector<Vector3<AutoDiffXd>>&, const Vector3<AutoDiffXd>&,
+    std::vector<SurfaceFace>*, std::vector<SurfaceVertex<AutoDiffXd>>*);
 
 template bool IsFaceNormalInNormalDirection(
     const Vector3<double>& normal_F, const SurfaceMesh<double>& surface_M,

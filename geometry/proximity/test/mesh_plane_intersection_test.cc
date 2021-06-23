@@ -15,7 +15,6 @@
 #include "drake/geometry/proximity/contact_surface_utility.h"
 #include "drake/math/autodiff.h"
 #include "drake/math/autodiff_gradient.h"
-#include "drake/math/orthonormal_basis.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
 
@@ -988,7 +987,7 @@ TEST_F(ComputeContactSurfaceTest, AllTetsAreConsidered) {
   ASSERT_NE(contact_surface_0, nullptr);
   EXPECT_EQ(contact_surface_0->mesh_W().num_elements(), 3);
   EXPECT_EQ(contact_surface_0->mesh_W().num_vertices(), 4);
-  const RigidTransformd X_MW = X_FM_.inverse() * X_WF_.inverse();
+  const RigidTransformd X_MW = X_FM_.InvertAndCompose(X_WF_.inverse());
   const SurfaceVertexIndex last_vertex{3};
   {
     // For tet 0, the z-value of the last vertex should be > 0.
@@ -1215,7 +1214,7 @@ GTEST_TEST(MeshPlaneIntersectionTest, SoftVolumeRigidHalfSpace) {
   const VolumeMesh<double> mesh_F = TrivialVolumeMesh(RigidTransformd{});
   const VolumeMeshFieldLinear<double, double> field_F{
       "pressure", vector<double>{0.25, 0.5, 0.75, 1, -1}, &mesh_F};
-  const Bvh<VolumeMesh<double>> bvh_F(mesh_F);
+  const Bvh<Obb, VolumeMesh<double>> bvh_F(mesh_F);
 
   // We'll pose the plane in the soft mesh's frame S and then transform the
   // whole system.
@@ -1344,7 +1343,7 @@ class MeshPlaneDerivativesTest : public ::testing::Test {
                                               std::move(vertices_S));
     field_S_ = make_unique<VolumeMeshFieldLinear<double, double>>(
         "pressure", vector<double>{0.25, 0.5, 0.75, 1}, mesh_S_.get());
-    bvh_S_ = std::make_unique<Bvh<VolumeMesh<double>>>(*mesh_S_);
+    bvh_S_ = std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*mesh_S_);
 
     /* Rigid plane; tilt and offset the plane so things are interesting. */
     X_WR_ = HalfSpace::MakePose(Vector3d{1, 2, 3}.normalized(),
@@ -1374,7 +1373,8 @@ class MeshPlaneDerivativesTest : public ::testing::Test {
       if (cos_theta < -kAlmostOne) {
         /* They are anti-parallel. We need a normal perpendicular to s_F;
          extract it from a valid basis. */
-        const Matrix3<double> basis = math::ComputeBasisFromAxis(2, s_F);
+        const math::RotationMatrix<double> basis =
+            math::RotationMatrix<double>::MakeFromOneVector(s_F, 2);
         const Vector3d rhat = basis.col(0);
         R_FA = RotationMatrixd(AngleAxisd(M_PI, rhat));
       } else {
@@ -1515,7 +1515,7 @@ class MeshPlaneDerivativesTest : public ::testing::Test {
   GeometryId id_S_;
   unique_ptr<VolumeMesh<double>> mesh_S_;
   unique_ptr<VolumeMeshFieldLinear<double, double>> field_S_;
-  unique_ptr<Bvh<VolumeMesh<double>>> bvh_S_;
+  unique_ptr<Bvh<Obb, VolumeMesh<double>>> bvh_S_;
 
   /* Rigid plane. No geometry is required; it's implied by the pose. */
   RigidTransform<AutoDiffXd> X_WR_;

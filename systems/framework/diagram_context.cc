@@ -150,7 +150,7 @@ void DiagramContext<T>::MakeState() {
     state->set_substate(i, &Context<T>::access_mutable_state(&subcontext));
   }
   state->Finalize();
-  state->get_mutable_continuous_state().set_system_id(this->get_system_id());
+  state->set_system_id(this->get_system_id());
   state_ = std::move(state);
 }
 
@@ -174,6 +174,7 @@ void DiagramContext<T>::MakeParameters() {
       std::make_unique<DiscreteValues<T>>(numeric_params));
   params->set_abstract_parameters(
       std::make_unique<AbstractValues>(abstract_params));
+  params->set_system_id(this->get_system_id());
   this->init_parameters(std::move(params));
 }
 

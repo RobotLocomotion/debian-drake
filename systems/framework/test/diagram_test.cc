@@ -878,6 +878,7 @@ TEST_F(DiagramTest, CalcTimeDerivatives) {
   AttachInputs();
   std::unique_ptr<ContinuousState<double>> derivatives =
       diagram_->AllocateTimeDerivatives();
+  EXPECT_EQ(derivatives->get_system_id(), context_->get_system_id());
 
   diagram_->CalcTimeDerivatives(*context_, derivatives.get());
 
@@ -1422,7 +1423,7 @@ class PublishingSystem : public LeafSystem<double> {
  public:
   explicit PublishingSystem(std::function<void(double)> callback)
       : callback_(callback) {
-    this->DeclareInputPort(kVectorValued, 1);
+    this->DeclareInputPort(kUseDefaultName, kVectorValued, 1);
   }
 
  protected:
@@ -1580,10 +1581,12 @@ TEST_F(DiagramTest, SubclassTransmogrificationTest) {
 class Reduce : public LeafSystem<double> {
  public:
   Reduce() {
-    const auto& input0 = this->DeclareInputPort(kVectorValued, 1);
+    const auto& input0 = this->DeclareInputPort(
+        kUseDefaultName, kVectorValued, 1);
     feedthrough_input_ = input0.get_index();
-    sink_input_ = this->DeclareInputPort(kVectorValued, 1).get_index();
-    this->DeclareVectorOutputPort(BasicVector<double>(1),
+    sink_input_ = this->DeclareInputPort(
+        kUseDefaultName, kVectorValued, 1).get_index();
+    this->DeclareVectorOutputPort(kUseDefaultName, BasicVector<double>(1),
                                   &Reduce::CalcFeedthrough,
                                   {input0.ticket()});
   }
@@ -1712,7 +1715,7 @@ class SecondOrderStateVector : public BasicVector<double> {
 class SecondOrderStateSystem : public LeafSystem<double> {
  public:
   SecondOrderStateSystem() {
-    DeclareInputPort(kVectorValued, 1);
+    DeclareInputPort(kUseDefaultName, kVectorValued, 1);
     DeclareContinuousState(SecondOrderStateVector{},
                            1 /* num_q */, 1 /* num_v */, 0 /* num_z */);
   }
@@ -1970,6 +1973,7 @@ TEST_F(DiscreteStateTest, UpdateDiscreteVariables) {
   // Allocate the discrete variables.
   std::unique_ptr<DiscreteValues<double>> updates =
       diagram_.AllocateDiscreteVariables();
+  EXPECT_EQ(updates->get_system_id(), context_->get_system_id());
   const DiscreteValues<double>& updates1 =
       diagram_
           .GetSubsystemDiscreteValues(*diagram_.hold1(), *updates);
@@ -3175,6 +3179,7 @@ GTEST_TEST(MyEventTest, MyEventTestLeaf) {
   MyEventTestSystem dut("sys", 0.2);
   auto events = dut.AllocateCompositeEventCollection();
   auto context = dut.CreateDefaultContext();
+  EXPECT_EQ(events->get_system_id(), context->get_system_id());
 
   double time = dut.CalcNextUpdateTime(*context, events.get());
   context->SetTime(time);
