@@ -18,6 +18,7 @@
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_bool.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/nice_type_name.h"
 #include "drake/common/pointer_cast.h"
@@ -35,31 +36,6 @@
 
 namespace drake {
 namespace systems {
-
-#if !defined(DRAKE_DOXYGEN_CXX)
-// Private helper class for System.
-class SystemImpl {
- public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SystemImpl)
-  SystemImpl() = delete;
-
- private:
-  // Attorney-Client idiom to expose a subset of private elements of System.
-  // We are the attorney.  These are the clients that can access our private
-  // members, and thus access some subset of System's private members.
-  template <typename> friend class Diagram;
-
-  // Return a mutable reference to the System's SystemScalarConverter.  Diagram
-  // needs this in order to withdraw support for certain scalar type conversion
-  // operations once it learns about what its subsystems support.
-  template <typename T>
-  static SystemScalarConverter& get_mutable_system_scalar_converter(
-      System<T>* system) {
-    DRAKE_DEMAND(system != nullptr);
-    return system->system_scalar_converter_;
-  }
-};
-#endif  // DRAKE_DOXYGEN_CXX
 
 /** Base class for all System functionality that is dependent on the templatized
 scalar type T for input, state, parameters, and outputs.
@@ -90,8 +66,8 @@ class System : public SystemBase {
   instance is used for populating collections of triggered events; for
   example, Simulator passes this object to System::CalcNextUpdateTime() to
   allow the system to identify and handle upcoming events. */
-  virtual std::unique_ptr<CompositeEventCollection<T>>
-  AllocateCompositeEventCollection() const = 0;
+  std::unique_ptr<CompositeEventCollection<T>>
+  AllocateCompositeEventCollection() const;
 
   /** Given an input port, allocates the vector storage.  The @p input_port
   must match a port declared via DeclareInputPort. */
@@ -391,7 +367,7 @@ class System : public SystemBase {
   const Vec<T>* EvalVectorInput(const Context<T>& context,
                                 int port_index) const {
     static_assert(
-        std::is_base_of<BasicVector<T>, Vec<T>>::value,
+        std::is_base_of_v<BasicVector<T>, Vec<T>>,
         "In EvalVectorInput<Vec>, Vec must be a subclass of BasicVector.");
 
     ValidateContext(context);
@@ -1407,16 +1383,14 @@ class System : public SystemBase {
   //@}
 
   // =========================================================================
-  /** @name             To-be-deprecated declarations
+  /** @name                Deprecated declarations
   Methods in this section leave out the port name parameter and are the same
   as invoking the corresponding method with `kUseDefaultName` as the name.
   We intend to make specifying the name required and will deprecate these
   soon. Don't use them. */
   //@{
 
-  /** See the nearly identical signature with an additional (first) argument
-  specifying the port name.  This version will be deprecated as discussed
-  in #9447. */
+  DRAKE_DEPRECATED("2021-10-01", "Pass a port name as the first argument.")
   InputPort<T>& DeclareInputPort(
       PortDataType type, int size,
       std::optional<RandomDistribution> random_type = std::nullopt);
@@ -1699,6 +1673,11 @@ class System : public SystemBase {
     forced_unrestricted_update_events_ = std::move(forced);
   }
 
+  /** Returns the SystemScalarConverter for `this` system. */
+  SystemScalarConverter& get_mutable_system_scalar_converter() {
+    return system_scalar_converter_;
+  }
+
   /** Checks whether the given object was created for this system.
   @note This method is sufficiently fast for performance sensitive code. */
   template <template <typename> class Clazz>
@@ -1726,10 +1705,6 @@ class System : public SystemBase {
   }
 
  private:
-  // Attorney-Client idiom to expose a subset of private elements of System.
-  // Refer to SystemImpl comments for details.
-  friend class SystemImpl;
-
   // For any T1 & T2, System<T1> considers System<T2> a friend, so that System
   // can safely and efficiently convert scalar types. See for example
   // System<T>::ToScalarTypeMaybe.
@@ -1739,6 +1714,13 @@ class System : public SystemBase {
   // specified by @p input_port.  This is final in LeafSystem and Diagram.
   virtual std::unique_ptr<AbstractValue> DoAllocateInput(
       const InputPort<T>& input_port) const = 0;
+
+  // Allocates a composite event collection for use with this system.
+  // Implementers should not set system_id; that is done by the wrapping
+  // AllocateCompositeEventCollection method. This method is final in
+  // LeafSystem and Diagram.
+  virtual std::unique_ptr<CompositeEventCollection<T>>
+  DoAllocateCompositeEventCollection() const = 0;
 
   std::function<void(const AbstractValue&)> MakeFixInputPortTypeChecker(
       InputPortIndex port_index) const final;

@@ -34,6 +34,17 @@ struct GurobiSolverDetails {
   double objective_bound{NAN};
 };
 
+/// An implementation of SolverInterface for the commercially-licensed Gurobi
+/// solver (https://www.gurobi.com/).
+///
+/// The default build of Drake is not configured to use Gurobi, so therefore
+/// SolverInterface::available() will return false. You must compile Drake
+/// from source in order to link against Gurobi. For details, refer to the
+/// documentation at https://drake.mit.edu/bazel.html#proprietary-solvers.
+///
+/// The GRB_LICENSE_FILE environment variable controls whether or not
+/// SolverInterface::enabled() returns true.  If it is set to any non-empty
+/// value, then the solver is enabled; otherwise, the solver is not enabled.
 class GurobiSolver final : public SolverBase {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(GurobiSolver)
@@ -155,6 +166,7 @@ class GurobiSolver final : public SolverBase {
   /// to a non-empty value.
   static bool is_enabled();
   static bool ProgramAttributesSatisfied(const MathematicalProgram&);
+  static std::string UnsatisfiedProgramAttributes(const MathematicalProgram&);
   //@}
 
   // A using-declaration adds these methods into our class's Doxygen.

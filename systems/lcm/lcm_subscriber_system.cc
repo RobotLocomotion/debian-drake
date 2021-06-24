@@ -42,6 +42,7 @@ LcmSubscriberSystem::LcmSubscriberSystem(
   // Use the "advanced" method to construct explicit non-member functors to
   // deal with the unusual methods we have available.
   DeclareAbstractOutputPort(
+      kUseDefaultName,
       [this]() {
         return this->AllocateSerializerOutputValue();
       },
@@ -128,8 +129,8 @@ void LcmSubscriberSystem::DoCalcNextUpdateTime(
   *time = context.get_time();
   EventCollection<UnrestrictedUpdateEvent<double>>& uu_events =
       events->get_mutable_unrestricted_update_events();
-  uu_events.add_event(
-      std::make_unique<systems::UnrestrictedUpdateEvent<double>>(
+  uu_events.AddEvent(
+      systems::UnrestrictedUpdateEvent<double>(
           TriggerType::kTimed, callback));
 }
 

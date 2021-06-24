@@ -8,6 +8,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
+#include "drake/geometry/proximity/proximity_utilities.h"
 #include "drake/math/autodiff.h"
 #include "drake/math/autodiff_gradient.h"
 #include "drake/math/rigid_transform.h"
@@ -34,11 +35,9 @@ const double kEps = std::numeric_limits<double>::epsilon();
 template <typename Derived>
 Eigen::Matrix<double, Derived::RowsAtCompileTime, Derived::ColsAtCompileTime>
 ExtractMatrixValue(const Derived& v) {
-  if constexpr (std::is_same<typename Derived::Scalar, double>::value) {
+  if constexpr (std::is_same_v<typename Derived::Scalar, double>) {
     return v;
-    // NOLINTNEXTLINE
-  } else if constexpr (std::is_same<typename Derived::Scalar,
-                                    AutoDiffXd>::value) {
+  } else if constexpr (std::is_same_v<typename Derived::Scalar, AutoDiffXd>) {
     return math::autoDiffToValueMatrix(v);
   } else {
     static_assert("Unsupported type T");
@@ -129,7 +128,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     const double target_depth = 0.1;
     const double center_distance = kRadius * 2 - target_depth;
     Vector3<T> p_WBo;
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       p_WBo = math::initializeAutoDiff(
           (Vector3d{1, -2, 3}.normalized() * center_distance));
     } else {
@@ -227,7 +226,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     EXPECT_TRUE(CompareMatrices(ExtractMatrixValue(first_result.nhat_BA_W),
                                 ExtractMatrixValue(second_result.nhat_BA_W)));
 
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       // Make sure that callback with T=AutoDiffXd and T=double produces the
       // same result.
       const RigidTransform<double> X_WA_double =
@@ -264,7 +263,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     const double center_distance = kRadius + box_size_[0] / 2 - target_depth;
     Vector3<T> p_WBo;
     const RotationMatrix<T> R_WB = RotationMatrix<T>::MakeZRotation(0.2);
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       p_WBo =
           R_WB * math::initializeAutoDiff(Vector3d::UnitX() * center_distance);
     } else {
@@ -281,7 +280,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     const double center_distance = kRadius + cylinder_size_[0] - target_depth;
     Vector3<T> p_WBo;
     const RotationMatrix<T> R_WB = RotationMatrix<T>::MakeZRotation(0.2);
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       p_WBo =
           R_WB * math::initializeAutoDiff(Vector3d::UnitX() * center_distance);
     } else {
@@ -296,7 +295,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     const RotationMatrix<T> R_WB = RotationMatrix<T>::MakeZRotation(0.1) *
                                    RotationMatrix<T>::MakeXRotation(0.5);
     Vector3<T> p_WBo;
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       p_WBo = math::initializeAutoDiff(Eigen::Vector3d(0.5, -0.2, 0.9));
     } else {
       p_WBo = Eigen::Vector3d(0.5, -0.2, 0.9);
@@ -316,7 +315,7 @@ class PenetrationAsPointPairCallbackTest : public ::testing::Test {
     const double center_distance = kRadius + capsule_size_[0] - target_depth;
     Vector3<T> p_WBo;
     const RotationMatrix<T> R_WB = RotationMatrix<T>::MakeZRotation(0.2);
-    if constexpr (std::is_same<T, AutoDiffXd>::value) {
+    if constexpr (std::is_same_v<T, AutoDiffXd>) {
       p_WBo =
           R_WB * math::initializeAutoDiff(Vector3d::UnitX() * center_distance);
     } else {

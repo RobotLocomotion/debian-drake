@@ -94,6 +94,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   given Context, recalculating it first if necessary. */
   const PositionKinematicsCache<T>& EvalPositionKinematics(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return position_kinematics_cache_entry()
         .template Eval<PositionKinematicsCache<T>>(context);
   }
@@ -103,6 +104,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   PositionKinematicsCache will be recalculated as well. */
   const VelocityKinematicsCache<T>& EvalVelocityKinematics(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return velocity_kinematics_cache_entry()
         .template Eval<VelocityKinematicsCache<T>>(context);
   }
@@ -113,6 +115,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   VelocityKinematicsCache will be recalculated as well. */
   const internal::AccelerationKinematicsCache<T>& EvalForwardDynamics(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return acceleration_kinematics_cache_entry()
         .template Eval<AccelerationKinematicsCache<T>>(context);
   }
@@ -123,6 +126,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   "Articulated Body Algorithm Forward Dynamics" for further details. */
   const ArticulatedBodyInertiaCache<T>& EvalArticulatedBodyInertiaCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.abi_cache_index)
         .template Eval<ArticulatedBodyInertiaCache<T>>(context);
   }
@@ -131,6 +135,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   in the given Context, recalculating it first if necessary. */
   const std::vector<SpatialInertia<T>>& EvalSpatialInertiaInWorldCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.spatial_inertia_in_world)
         .template Eval<std::vector<SpatialInertia<T>>>(context);
   }
@@ -139,6 +144,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   in the given Context, recalculating it first if necessary. */
   const VectorX<T>& EvalReflectedInertiaCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.reflected_inertia)
         .template Eval<VectorX<T>>(context);
   }
@@ -147,6 +153,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   in the given Context, recalculating it first if necessary. */
   const std::vector<SpatialInertia<T>>& EvalCompositeBodyInertiaInWorldCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.composite_body_inertia_in_world)
         .template Eval<std::vector<SpatialInertia<T>>>(context);
   }
@@ -159,6 +166,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   `F_Bo_W` is the spatial force on B about Bo, expressed in W. */
   const std::vector<SpatialForce<T>>& EvalDynamicBiasCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.dynamic_bias)
         .template Eval<std::vector<SpatialForce<T>>>(context);
   }
@@ -175,6 +183,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   See @ref abi_computing_accelerations for further details. */
   const std::vector<SpatialAcceleration<T>>& EvalSpatialAccelerationBiasCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.spatial_acceleration_bias)
         .template Eval<std::vector<SpatialAcceleration<T>>>(context);
   }
@@ -187,6 +196,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   const std::vector<SpatialForce<T>>&
   EvalArticulatedBodyForceBiasCache(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.articulated_body_force_bias)
         .template Eval<std::vector<SpatialForce<T>>>(context);
   }
@@ -196,6 +206,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   the velocity-dependent bias forces and applied forces. */
   const ArticulatedBodyForceCache<T>&
   EvalArticulatedBodyForceCache(const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.articulated_body_forces)
         .template Eval<ArticulatedBodyForceCache<T>>(context);
   }
@@ -214,6 +225,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   const std::vector<Vector6<T>>&
   EvalAcrossNodeJacobianWrtVExpressedInWorld(
       const systems::Context<T>& context) const {
+    this->ValidateContext(context);
     return this->get_cache_entry(cache_indexes_.across_node_jacobians)
         .template Eval<std::vector<Vector6<T>>>(context);
   }
@@ -231,6 +243,22 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   /* Returns the cache entry that holds acceleration kinematics results. */
   const systems::CacheEntry& acceleration_kinematics_cache_entry() const {
     return this->get_cache_entry(cache_indexes_.acceleration_kinematics);
+  }
+
+  /* Returns the DiscreteStateIndex for the one and only multibody discrete
+  state if the system is discrete and finalized. Throws otherwise. */
+  systems::DiscreteStateIndex GetDiscreteStateIndexOrThrow() const {
+    if (!is_discrete_) {
+      throw std::runtime_error(
+          "The MultibodyTreeSystem is modeled as a continuous system and there "
+          "does not exist any discrete state.");
+    }
+    if (!already_finalized_) {
+      throw std::logic_error(
+          "GetDiscreteStateIndexOrThrow() can only be "
+          "called post-Finalize().");
+    }
+    return tree_->get_discrete_state_index();
   }
 
  protected:
@@ -316,6 +344,12 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
       const systems::Context<T>& context,
       const Eigen::Ref<const VectorX<T>>& generalized_velocity,
       systems::VectorBase<T>* qdot) const final;
+
+  // Public documentation for this overload can be found in multibody_plant.h.
+  void DoCalcImplicitTimeDerivativesResidual(
+      const systems::Context<T>& context,
+      const systems::ContinuousState<T>& proposed_derivatives,
+      EigenPtr<VectorX<T>> residual) const final;
 
   T DoCalcPotentialEnergy(const systems::Context<T>& context) const final {
     return internal_tree().CalcPotentialEnergy(context);
@@ -444,7 +478,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   }
 
   // This method is called during Finalize(). It tells each MultibodyElement
-  // owned by `this` system to declare their system paramters on `this`.
+  // owned by `this` system to declare their system parameters on `this`.
   void DeclareMultibodyElementParameters();
 
   // Allow different specializations to access each other's private data for
@@ -481,8 +515,7 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
                       std::unique_ptr<MultibodyTree<T>> tree,
                       bool is_discrete);
 
-  // Use continuous state variables by default.
-  bool is_discrete_{false};
+  const bool is_discrete_;
 
   std::unique_ptr<drake::multibody::internal::MultibodyTree<T>> tree_;
 

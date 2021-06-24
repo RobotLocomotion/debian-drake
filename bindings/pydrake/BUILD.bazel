@@ -65,13 +65,6 @@ generate_pybind_documentation_header(
     root_name = "pydrake_doc",
     targets = [
         "//tools/install/libdrake:drake_headers",
-        "//examples/compass_gait:compass_gait",
-        "//examples/manipulation_station:manipulation_station",
-        "//examples/manipulation_station:manipulation_station_hardware_interface",  # noqa
-        "//examples/pendulum:pendulum_plant",
-        "//examples/quadrotor:quadrotor_plant",
-        "//examples/rimless_wheel:rimless_wheel",
-        "//examples/van_der_pol:van_der_pol",
     ],
 )
 
@@ -164,6 +157,7 @@ drake_pybind_library(
         "//bindings/pydrake:symbolic_types_pybind",
         "//bindings/pydrake/common:cpp_template_pybind",
         "//bindings/pydrake/common:default_scalars_pybind",
+        "//bindings/pydrake/common:deprecation_pybind",
         "//bindings/pydrake/common:eigen_pybind",
         "//bindings/pydrake/common:type_pack",
         "//bindings/pydrake/common:value_pybind",
