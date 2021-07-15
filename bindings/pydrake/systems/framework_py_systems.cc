@@ -85,6 +85,7 @@ struct Impl {
     using Base::DeclarePeriodicEvent;
     using Base::DeclarePeriodicPublish;
     using Base::DeclarePerStepEvent;
+    using Base::DeclareStateOutputPort;
     using Base::DeclareVectorInputPort;
     using Base::DeclareVectorOutputPort;
     using Base::MakeWitnessFunction;
@@ -607,6 +608,22 @@ Note: The above is for the C++ documentation. For Python, use
                 .doc_deprecated_deprecated_3args_constBasicVectorSubtype_voidMySystemconstContextBasicVectorSubtypeconst_stdset);
 #pragma GCC diagnostic pop
     leaf_system_cls  // BR
+        .def("DeclareStateOutputPort",
+            py::overload_cast<std::variant<std::string, UseDefaultName>,
+                ContinuousStateIndex>(
+                &LeafSystemPublic::DeclareStateOutputPort),
+            py::arg("name"), py::arg("state_index"), py_rvp::reference_internal,
+            doc.LeafSystem.DeclareStateOutputPort.doc_continuous)
+        .def("DeclareStateOutputPort",
+            py::overload_cast<std::variant<std::string, UseDefaultName>,
+                DiscreteStateIndex>(&LeafSystemPublic::DeclareStateOutputPort),
+            py::arg("name"), py::arg("state_index"), py_rvp::reference_internal,
+            doc.LeafSystem.DeclareStateOutputPort.doc_discrete)
+        .def("DeclareStateOutputPort",
+            py::overload_cast<std::variant<std::string, UseDefaultName>,
+                AbstractStateIndex>(&LeafSystemPublic::DeclareStateOutputPort),
+            py::arg("name"), py::arg("state_index"), py_rvp::reference_internal,
+            doc.LeafSystem.DeclareStateOutputPort.doc_abstract)
         .def(
             "DeclareInitializationEvent",
             [](PyLeafSystem* self, const Event<T>& event) {
@@ -853,13 +870,24 @@ void DoScalarIndependentDefinitions(py::module m) {
             });
     // Bind templated instantiations.
     auto converter_methods = [converter](auto pack) {
+      constexpr auto& cls_doc = pydrake_doc.drake.systems.SystemScalarConverter;
       using Pack = decltype(pack);
       using T = typename Pack::template type_at<0>;
       using U = typename Pack::template type_at<1>;
-      AddTemplateMethod(converter, "Add",
-          WrapCallbacks(&SystemScalarConverter::Add<T, U>), GetPyParam<T, U>());
       AddTemplateMethod(converter, "IsConvertible",
           &SystemScalarConverter::IsConvertible<T, U>, GetPyParam<T, U>());
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+      AddTemplateMethod(converter, "Add",
+          WrapDeprecated(cls_doc.Add.doc_deprecated,
+              WrapCallbacks(&SystemScalarConverter::Add<T, U>)),
+          GetPyParam<T, U>());
+      // N.B. When the deprecation date happens, the C++ member function Add()
+      // should become internal or private, to be used only by pydrake here
+      // via this method with a leading underscore.
+      AddTemplateMethod(converter, "_Add",
+          WrapCallbacks(&SystemScalarConverter::Add<T, U>), GetPyParam<T, U>());
+#pragma GCC diagnostic pop
     };
     // N.B. When changing the pairs of supported types below, ensure that these
     // reflect the stanzas for the advanced constructor of

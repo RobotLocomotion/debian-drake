@@ -171,6 +171,18 @@ class MathematicalProgram {
   std::unique_ptr<MathematicalProgram> Clone() const;
 
   /**
+   * Returns string representation of this program, listing the decision
+   * variables, costs, and constraints.
+   *
+   * Note that by default, we do not require variables to have unique names.
+   * Providing useful variable names and calling Evaluator::set_description() to
+   * describe the costs and constraints can dramatically improve the readability
+   * of the output.  See the tutorial `debug_mathematical_program.ipynb`
+   * for more information.
+   */
+  std::string to_string() const;
+
+  /**
    * Adds continuous variables, appending them to an internal vector of any
    * existing vars.
    * The initial guess values for the new variables are set to NaN, to
@@ -397,7 +409,7 @@ class MathematicalProgram {
    * @pre `decision_variables` should not intersect with the existing variables
    * or indeterminates in the optimization program.
    * @pre Each entry in `decision_variables` should not be a dummy variable.
-   * @throws std::runtime_error if the preconditions are not satisfied.
+   * @throws std::exception if the preconditions are not satisfied.
    */
   void AddDecisionVariables(
       const Eigen::Ref<const VectorXDecisionVariable>& decision_variables);
@@ -531,7 +543,7 @@ class MathematicalProgram {
    *   p = Q₍₀,₀₎x⁴ + 2Q₍₁,₀₎ x³ + (2Q₍₂,₀₎ + Q₍₁,₁₎)x² + 2Q₍₂,₁₎x + Q₍₂,₂₎
    * and Q.
    *
-   * @throws std::runtime_error if @p degree is not a positive even integer.
+   * @throws std::exception if @p degree is not a positive even integer.
    * @see MonomialBasis.
    */
   std::pair<symbolic::Polynomial, MatrixXDecisionVariable> NewSosPolynomial(
@@ -1007,7 +1019,7 @@ class MathematicalProgram {
    * is_convex=nullopt (the default), then Drake will determine if `e` is a
    * convex quadratic cost or not. To improve the computation speed, the user
    * can set is_convex if the user knows whether the cost is convex or not.
-   * @throws std::runtime error if the expression is not quadratic.
+   * @throws std::exception if the expression is not quadratic.
    * @return The newly added cost together with the bound variables.
    */
   Binding<QuadraticCost> AddQuadraticCost(
@@ -1904,7 +1916,7 @@ class MathematicalProgram {
    *    Also the quadratic expression has to be convex, namely Q is a
    *    positive semidefinite matrix, and the quadratic expression needs
    *    to be non-negative for any x.
-   * @throws std::runtime_error if the preconditions are not satisfied.
+   * @throws std::exception if the preconditions are not satisfied.
    *
    * Notice this constraint is equivalent to the vector [z;y] is within a
    * Lorentz cone, where
@@ -2068,7 +2080,7 @@ class MathematicalProgram {
    *    Also the quadratic expression has to be convex, namely Q is a
    *    positive semidefinite matrix, and the quadratic expression needs
    *    to be non-negative for any x.
-   * @throws std::runtime_error if the preconditions are not satisfied.
+   * @throws std::exception if the preconditions are not satisfied.
    *
    * For example, to add the rotated Lorentz cone constraint
    *
@@ -2279,7 +2291,7 @@ class MathematicalProgram {
   /**
    * Adds a positive semidefinite constraint on a symmetric matrix.
    *
-   * @throws std::runtime_error in Debug mode if @p symmetric_matrix_var is not
+   * @throws std::exception in Debug mode if @p symmetric_matrix_var is not
    * symmetric.
    * @param symmetric_matrix_var A symmetric MatrixDecisionVariable object.
    */
@@ -2557,7 +2569,7 @@ class MathematicalProgram {
   /**
    * Gets the initial guess for a single variable.
    * @pre @p decision_variable has been registered in the optimization program.
-   * @throws std::runtime_error if the pre condition is not satisfied.
+   * @throws std::exception if the pre condition is not satisfied.
    */
   double GetInitialGuess(const symbolic::Variable& decision_variable) const;
 
@@ -2565,7 +2577,7 @@ class MathematicalProgram {
    * Gets the initial guess for some variables.
    * @pre Each variable in @p decision_variable_mat has been registered in the
    * optimization program.
-   * @throws std::runtime_error if the pre condition is not satisfied.
+   * @throws std::exception if the pre condition is not satisfied.
    */
   template <typename Derived>
   typename std::enable_if_t<
@@ -2591,7 +2603,7 @@ class MathematicalProgram {
    * Sets the initial guess for a single variable @p decision_variable.
    * The guess is stored as part of this program.
    * @pre decision_variable is a registered decision variable in the program.
-   * @throws std::runtime_error if precondition is not satisfied.
+   * @throws std::exception if precondition is not satisfied.
    */
   void SetInitialGuess(const symbolic::Variable& decision_variable,
                        double variable_guess_value);
@@ -2874,7 +2886,7 @@ class MathematicalProgram {
    * program.
    * @param prog_var_vals The value of all the decision variables in this
    * program.
-   * @throws std::logic_error if the size of `prog_var_vals` is invalid.
+   * @throws std::exception if the size of `prog_var_vals` is invalid.
    */
   template <typename C, typename DerivedX>
   typename std::enable_if_t<is_eigen_vector<DerivedX>::value,
@@ -2906,7 +2918,7 @@ class MathematicalProgram {
    * @param prog_var_vals The value of all the decision variables in this
    * program.
    * @return All binding values, concatenated into a single vector.
-   * @throws std::logic_error if the size of `prog_var_vals` is invalid.
+   * @throws std::exception if the size of `prog_var_vals` is invalid.
    */
   template <typename C, typename DerivedX>
   typename std::enable_if_t<is_eigen_vector<DerivedX>::value,
@@ -2962,7 +2974,7 @@ class MathematicalProgram {
    *
    * @param prog_var_vals The value of all the decision variables in this
    * program.
-   * @throws std::logic_error if the size does not match.
+   * @throws std::exception if the size does not match.
    */
   void EvalVisualizationCallbacks(
       const Eigen::Ref<const Eigen::VectorXd>& prog_var_vals) const;
@@ -2975,6 +2987,43 @@ class MathematicalProgram {
   Eigen::VectorXd EvalBindingAtInitialGuess(const Binding<C>& binding) const {
     return EvalBinding(binding, x_initial_guess_);
   }
+
+  /**
+   * Evaluates CheckSatisfied for the constraint in @p binding using the value
+   * of ALL of the decision variables in this program.
+   * @throws std::exception if the size of `prog_var_vals` is invalid.
+   */
+  bool CheckSatisfied(const Binding<Constraint>& binding,
+                      const Eigen::Ref<const Eigen::VectorXd>& prog_var_vals,
+                      double tol = 1e-6) const;
+
+  /**
+   * Evaluates CheckSatisfied for the all of the constraints in @p binding using
+   * the value of ALL of the decision variables in this program.
+   * @returns true iff all of the constraints are satisfied.
+   * @throws std::exception if the size of `prog_var_vals` is invalid.
+   * @pydrake_mkdoc_identifier{vector}
+   */
+  bool CheckSatisfied(const std::vector<Binding<Constraint>>& bindings,
+                      const Eigen::Ref<const Eigen::VectorXd>& prog_var_vals,
+                      double tol = 1e-6) const;
+
+  /**
+   * Evaluates CheckSatisfied for the constraint in @p binding at the initial
+   * guess.
+   */
+  bool CheckSatisfiedAtInitialGuess(const Binding<Constraint>& binding,
+                                    double tol = 1e-6) const;
+
+  /**
+   * Evaluates CheckSatisfied for the all of the constraints in @p bindings at
+   * the initial guess.
+   * @returns true iff all of the constraints are satisfied.
+   * @pydrake_mkdoc_identifier{vector}
+   */
+  bool CheckSatisfiedAtInitialGuess(
+      const std::vector<Binding<Constraint>>& bindings,
+      double tol = 1e-6) const;
 
   /** Getter for all decision variables in the program. */
   const VectorXDecisionVariable& decision_variables() const {
@@ -3054,11 +3103,58 @@ class MathematicalProgram {
   void SetVariableScaling(const symbolic::Variable& var, double s);
   //@}
 
+  /**
+   * @anchor remove_cost_constraint
+   * @name    Remove costs or constraints
+   * Removes costs or constraints from this program. If this program contains
+   * multiple costs/constraints objects matching the given argument, then all of
+   * these costs/constraints are removed. If this program doesn't contain the
+   * specified cost/constraint, then the code does nothing. We regard two
+   * costs/constraints being equal, if their evaluators point to the same
+   * object, and the associated variables are also the same.
+   * @note If two costs/constraints represent the same expression, but their
+   * evaluators point to different objects, then they are NOT regarded the same.
+   * For example, if we have
+   * @code{.cc}
+   * auto cost1 = prog.AddLinearCost(x[0] + x[1]);
+   * auto cost2 = prog.AddLinearCost(x[0] + x[1]);
+   * // cost1 and cost2 represent the same cost, but cost1.evaluator() and
+   * // cost2.evaluator() point to different objects. So after removing cost1,
+   * // cost2 still lives in prog.
+   * prog.RemoveCost(cost1);
+   * // This will print true.
+   * std::cout << (prog.linear_costs()[0] == cost2) << "\n";
+   * @endcode
+   */
+
+  // @{
+  /** Removes @p cost from this mathematical program.
+   * See @ref remove_cost_constraint "Remove costs or constraints" for more
+   * details.
+   * @return number of cost objects removed from this program. If this program
+   * doesn't contain @p cost, then returns 0. If this program contains multiple
+   * @p cost objects, then returns the repetition of @p cost in this program.
+   */
+  int RemoveCost(const Binding<Cost>& cost);
+  //@}
+
  private:
   static void AppendNanToEnd(int new_var_size, Eigen::VectorXd* vector);
 
-  // maps the ID of a symbolic variable to the index of the variable stored in
-  // the optimization program.
+  // Removes a binding of a constraint/constraint, @p removal, from a given
+  // vector of bindings, @p existings. If @p removal does not belong to @p
+  // existings, then do nothing. If @p removal appears multiple times in @p
+  // existings, then all matching terms are removed. After removing @p removal,
+  // we check if we need to erase @p affected_capability from
+  // required_capabilities_.
+  // @return The number of @p removal object in @p existings.
+  template <typename C>
+  int RemoveCostOrConstraintImpl(const Binding<C>& removal,
+                                 ProgramAttribute affected_capability,
+                                 std::vector<Binding<C>>* existings);
+
+  // maps the ID of a symbolic variable to the index of the variable stored
+  // in the optimization program.
   std::unordered_map<symbolic::Variable::Id, int> decision_variable_index_{};
 
   VectorXDecisionVariable decision_variables_;
@@ -3096,45 +3192,17 @@ class MathematicalProgram {
       linear_complementarity_constraints_;
 
   Eigen::VectorXd x_initial_guess_;
-  Eigen::VectorXd x_values_;
-  std::optional<SolverId> solver_id_;
-  double optimal_cost_{};
-  // The lower bound of the objective found by the solver, during the
-  // optimization process.
-  double lower_bound_cost_{};
 
   // The actual per-solver customization options.
   SolverOptions solver_options_;
 
-  ProgramAttributes required_capabilities_{};
+  ProgramAttributes required_capabilities_;
 
   template <typename T>
   void NewVariables_impl(
       VarType type, const T& names, bool is_symmetric,
       Eigen::Ref<MatrixXDecisionVariable> decision_variable_matrix) {
-    switch (type) {
-      case VarType::CONTINUOUS:
-        break;
-      case VarType::BINARY:
-        required_capabilities_.insert(ProgramAttribute::kBinaryVariable);
-        break;
-      case VarType::INTEGER:
-        throw std::runtime_error(
-            "MathematicalProgram does not support integer variables yet.");
-      case VarType::BOOLEAN:
-        throw std::runtime_error(
-            "MathematicalProgram does not support Boolean variables.");
-      case VarType::RANDOM_UNIFORM:
-        throw std::runtime_error(
-            "MathematicalProgram does not support random uniform variables.");
-      case VarType::RANDOM_GAUSSIAN:
-        throw std::runtime_error(
-            "MathematicalProgram does not support random Gaussian variables.");
-      case VarType::RANDOM_EXPONENTIAL:
-        throw std::runtime_error(
-            "MathematicalProgram does not support random exponential "
-            "variables.");
-    }
+    CheckVariableType(type);
     int rows = decision_variable_matrix.rows();
     int cols = decision_variable_matrix.cols();
     DRAKE_ASSERT(!is_symmetric || rows == cols);
@@ -3147,7 +3215,6 @@ class MathematicalProgram {
     DRAKE_ASSERT(static_cast<int>(names.size()) == num_new_vars);
     decision_variables_.conservativeResize(num_vars() + num_new_vars,
                                            Eigen::NoChange);
-    AppendNanToEnd(num_new_vars, &x_values_);
     int row_index = 0;
     int col_index = 0;
     for (int i = 0; i < num_new_vars; ++i) {
@@ -3250,7 +3317,7 @@ class MathematicalProgram {
    * Ensure a binding is valid *before* adding it to the program.
    * @pre The binding has not yet been registered.
    * @pre The decision variables have been registered.
-   * @throws std::runtime_error if the binding is invalid.
+   * @throws std::exception if the binding is invalid.
    */
   template <typename C>
   void CheckBinding(const Binding<C>& binding) const {
@@ -3314,7 +3381,12 @@ class MathematicalProgram {
       symbolic::internal::DegreeType degree_type);
 
   std::unordered_map<int, double> var_scaling_map_{};
+
+  void CheckVariableType(VarType var_type);
 };
+
+std::ostream& operator<<(std::ostream& os, const MathematicalProgram& prog);
+
 
 }  // namespace solvers
 }  // namespace drake

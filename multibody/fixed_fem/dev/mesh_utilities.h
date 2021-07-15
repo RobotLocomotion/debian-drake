@@ -6,7 +6,7 @@
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 /** Generates a tetrahedral volume mesh of a given box by subdividing the box
  into _rectangular cells_ (volume bounded by six axis-aligned faces) and
  subdividing each rectangular cell into five tetrahedra. Two adjacent
@@ -39,11 +39,11 @@ distributed with the source code.
      dimension.
  @param[in] X_WB
      The pose of the rectanglur volume mesh in the world frame.
- @tparam_nonsymbolic_scalar T. */
+ @tparam_nonsymbolic_scalar */
 template <typename T>
 geometry::VolumeMesh<T> MakeDiamondCubicBoxVolumeMesh(
     const geometry::Box& box, double resolution_hint,
     const math::RigidTransform<T>& X_WB);
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

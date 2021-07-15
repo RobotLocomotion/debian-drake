@@ -1,6 +1,8 @@
 #pragma once
+
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,15 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
     return plant.internal_tree();
   }
 
+  static systems::CacheEntry& DeclareCacheEntry(
+      MultibodyPlant<T>* plant, std::string description,
+      systems::ValueProducer value_producer,
+      std::set<systems::DependencyTicket> prerequisites_of_calc) {
+    return plant->DeclareCacheEntry(std::move(description),
+                                    std::move(value_producer),
+                                    std::move(prerequisites_of_calc));
+  }
+
   static const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const MultibodyPlant<T>& plant,
                            const systems::Context<T>& context) {
@@ -40,6 +51,12 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
   static const internal::ContactJacobians<T>& EvalContactJacobians(
       const MultibodyPlant<T>& plant, const systems::Context<T>& context) {
     return plant.EvalContactJacobians(context);
+  }
+
+  static const std::vector<internal::DiscreteContactPair<T>>&
+  EvalDiscreteContactPairs(const MultibodyPlant<T>& plant,
+                           const systems::Context<T>& context) {
+    return plant.EvalDiscreteContactPairs(context);
   }
 
   static std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
@@ -52,11 +69,6 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
                                    const systems::Context<T>& context,
                                    bool discrete, MultibodyForces<T>* forces) {
     plant.CalcNonContactForces(context, discrete, forces);
-  }
-
-  static std::vector<internal::DiscreteContactPair<T>> CalcDiscreteContactPairs(
-      const MultibodyPlant<T>& plant, const systems::Context<T>& context) {
-    return plant.CalcDiscreteContactPairs(context);
   }
 
   static void CallTamsiSolver(
@@ -96,6 +108,11 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
 
   static double default_contact_dissipation(const MultibodyPlant<T>& plant) {
     return plant.penalty_method_contact_parameters_.dissipation;
+  }
+
+  static const std::unordered_map<geometry::GeometryId, BodyIndex>&
+  geometry_id_to_body_index(const MultibodyPlant<T>& plant) {
+    return plant.geometry_id_to_body_index_;
   }
 };
 }  // namespace internal

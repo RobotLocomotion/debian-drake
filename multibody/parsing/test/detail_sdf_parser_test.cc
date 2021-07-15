@@ -1,6 +1,5 @@
 #include "drake/multibody/parsing/detail_sdf_parser.h"
 
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 
@@ -9,7 +8,6 @@
 
 #include "drake/common/filesystem.h"
 #include "drake/common/find_resource.h"
-#include "drake/common/temp_directory.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
@@ -57,18 +55,27 @@ ModelInstanceIndex AddModelFromSdfFile(
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
     geometry::SceneGraph<double>* scene_graph = nullptr) {
+  const DataSource data_source{&file_name, {}};
   return AddModelFromSdf(
-      { .file_name = &file_name },
-      model_name, package_map, plant, scene_graph);
+      data_source, model_name, package_map, plant, scene_graph);
 }
 std::vector<ModelInstanceIndex> AddModelsFromSdfFile(
     const std::string& file_name,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
     geometry::SceneGraph<double>* scene_graph = nullptr) {
+  const DataSource data_source{&file_name, {}};
   return AddModelsFromSdf(
-      { .file_name = &file_name },
-      package_map, plant, scene_graph);
+      data_source, package_map, plant, scene_graph);
+}
+std::vector<ModelInstanceIndex> AddModelsFromSdfString(
+    const std::string& file_contents,
+    const PackageMap& package_map,
+    MultibodyPlant<double>* plant,
+    geometry::SceneGraph<double>* scene_graph = nullptr) {
+  const DataSource data_source{{}, &file_contents};
+  return AddModelsFromSdf(
+      data_source, package_map, plant, scene_graph);
 }
 
 const Frame<double>& GetModelFrameByName(const MultibodyPlant<double>& plant,
@@ -267,17 +274,15 @@ struct PlantAndSceneGraph {
 
 PlantAndSceneGraph ParseTestString(const std::string& inner,
                                    const std::string& sdf_version = "1.6") {
-  const std::string filename = temp_directory() + "/test_string.sdf";
-  std::ofstream file(filename);
-  file << "<sdf version='" << sdf_version << "'>" << inner << "\n</sdf>\n";
-  file.close();
+  const std::string file_contents =
+      "<sdf version='" + sdf_version + "'>" + inner + "\n</sdf>\n";
   PlantAndSceneGraph pair;
   pair.plant = std::make_unique<MultibodyPlant<double>>(0.0);
   pair.scene_graph = std::make_unique<SceneGraph<double>>();
   PackageMap package_map;
   pair.plant->RegisterAsSourceForSceneGraph(pair.scene_graph.get());
   drake::log()->debug("inner: {}", inner);
-  AddModelsFromSdfFile(filename, package_map, pair.plant.get());
+  AddModelsFromSdfString(file_contents, package_map, pair.plant.get());
   return pair;
 }
 
@@ -508,7 +513,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WA = frame_A.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WA_expected.GetAsMatrix4(), X_WA.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_A.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_A.body().index(), plant->world_body().index());
   }
 
   {
@@ -532,7 +537,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WA = frame_A.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WA_expected.GetAsMatrix4(), X_WA.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_A.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_A.body().index(), plant->world_body().index());
 
     const RigidTransformd X_WB_expected(
         RollPitchYawd(0.1, 0.2, 0.3), Vector3d(1, 2, 3));
@@ -541,7 +546,7 @@ GTEST_TEST(SdfParser, StaticModelSupported) {
     const RigidTransformd X_WB = frame_B.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(
           X_WB_expected.GetAsMatrix4(), X_WB.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame_B.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame_B.body().index(), plant->world_body().index());
   }
 }
 
@@ -570,7 +575,7 @@ GTEST_TEST(SdfParser, StaticFrameOnlyModelsSupported) {
     const RigidTransformd X_WF = frame.CalcPoseInWorld(*context);
     EXPECT_TRUE(CompareMatrices(X_WF_expected.GetAsMatrix4(),
                                 X_WF.GetAsMatrix4(), kEps));
-    EXPECT_EQ(frame.body().node_index(), plant->world_body().node_index());
+    EXPECT_EQ(frame.body().index(), plant->world_body().index());
   };
 
   test_frame("__model__", {RollPitchYawd(0.0, 0.0, 0.0), Vector3d(1, 0, 0)});
@@ -655,7 +660,7 @@ GTEST_TEST(SdfParser, IncludeTags) {
   const std::string full_name = FindResourceOrThrow(
       "drake/multibody/parsing/test/sdf_parser_test/"
       "include_models.sdf");
-  sdf::addURIPath("model://", filesystem::path(full_name).parent_path());
+
   MultibodyPlant<double> plant(0.0);
 
   // We start with the world and default model instances.
@@ -664,7 +669,7 @@ GTEST_TEST(SdfParser, IncludeTags) {
   ASSERT_EQ(plant.num_joints(), 0);
 
   PackageMap package_map;
-  package_map.PopulateUpstreamToDrake(full_name);
+  package_map.PopulateFromFolder(filesystem::path(full_name).parent_path());
   AddModelsFromSdfFile(full_name, package_map, &plant);
   plant.Finalize();
 
@@ -1021,6 +1026,15 @@ void FailWithUnsupportedRelativeTo(const std::string& inner) {
       R"(in <inertial/> or top-level <model/> tags in model files.)");
 }
 
+void FailWithRelativeToNotDefined(const std::string& inner) {
+  SCOPED_TRACE(inner);
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(inner),
+      std::runtime_error,
+      R"([\s\S]*XML Attribute\[relative_to\] in element\[pose\] not )"
+      R"(defined in SDF.\n)");
+}
+
 void FailWithInvalidWorld(const std::string& inner) {
   SCOPED_TRACE(inner);
   DRAKE_EXPECT_THROWS_MESSAGE(
@@ -1071,15 +1085,46 @@ GTEST_TEST(SdfParser, TestUnsupportedFrames) {
   <pose relative_to='invalid_usage'/>
   <link name='dont_crash_plz'/>  <!-- Need at least one frame -->
 </model>)");
-  // TODO(eric.cousineau): Change this to `FailWithUnsupportedRelativeTo`
-  // once sdformat#543 merges and is released.
-  ParseTestString(R"(
+  FailWithRelativeToNotDefined(R"(
 <model name='bad'>
   <frame name='my_frame'/>
   <link name='a'>
     <inertial><pose relative_to='my_frame'/></inertial>
   </link>
 </model>)");
+}
+
+// Tests Drake's usage of sdf::EnforcementPolicy.
+GTEST_TEST(SdfParser, TestSdformatParserPolicies) {
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      ParseTestString(R"""(
+<model name='model_with_bad_attribute' bad_attribute="junk">
+  <link name='a'/>
+</model>
+)"""),
+      std::runtime_error,
+      R"([\s\S]*XML Attribute\[bad_attribute\] in element\[model\] not )"
+      R"(defined in SDF.[\s\S]*)");
+
+  // TODO(#15018): This currently only emits a Drake-log deprecation warning.
+  // We should handle this more directly in the future, ideally via
+  // libsdformat's policies.
+  ParseTestString(R"""(
+<model name='model_with_too_many_top_level_elements'>
+  <link name='a'/>
+</model>
+<model name='two_models_too_many'>
+  <link name='b'/>
+</model>
+)""");
+
+  // TODO(#15018): Have this be a printed warning, and then make this an error.
+  ParseTestString(R"""(
+<model name='model_with_bad_element'>
+  <link name='a'/>
+  <bad_element/>
+</model>
+)""");
 }
 
 // Reports if the frame with the given id has a geometry with the given role
@@ -1665,11 +1710,11 @@ GTEST_TEST(SdfParser, FrameAttachedToMultiLevelNestedFrame) {
   // Also check that the frame is attached to the right body
   ModelInstanceIndex model_c_instance =
       plant->GetModelInstanceByName("a::b::c");
-  EXPECT_EQ(frame_E.body().node_index(),
-            plant->GetBodyByName("d", model_c_instance).node_index());
+  EXPECT_EQ(frame_E.body().index(),
+            plant->GetBodyByName("d", model_c_instance).index());
 
-  EXPECT_EQ(frame_F.body().node_index(),
-            plant->GetBodyByName("d", model_c_instance).node_index());
+  EXPECT_EQ(frame_F.body().index(),
+            plant->GetBodyByName("d", model_c_instance).index());
 }
 
 // Verify frames and links can have the same local name without violating name
@@ -1731,11 +1776,65 @@ GTEST_TEST(SdfParser, FrameAttachedToModelFrameInWorld) {
       X_WF_expected.GetAsMatrix4(), X_WF.GetAsMatrix4(), kEps));
 
   // Also check that the frame is attached to the right body
-  EXPECT_EQ(frame_E.body().node_index(),
-            plant->GetBodyByName("d").node_index());
+  EXPECT_EQ(frame_E.body().index(),
+            plant->GetBodyByName("d").index());
 
-  EXPECT_EQ(frame_F.body().node_index(),
-            plant->GetBodyByName("d").node_index());
+  EXPECT_EQ(frame_F.body().index(),
+            plant->GetBodyByName("d").index());
+}
+
+// Verify frames can be attached to joint frames
+GTEST_TEST(SdfParser, FrameAttachedToJointFrame) {
+  const std::string model_string = R"""(
+<world name='default'>
+  <model name='parent_model'>
+    <pose>0.1 0.2 0.0  0 0 0</pose>
+    <link name='L1'/>
+    <link name='L2'/>
+    <model name='M1'>
+      <pose>0 0.0 0.3  0 0 0</pose>
+      <link name='L3'/>
+    </model>
+    <!-- SDFormat has implicit frames for joints J1 and J2, but Drake does not
+    -->
+    <joint name='J1' type='fixed'>
+      <parent>L1</parent>
+      <child>L2</child>
+    </joint>
+    <joint name='J2' type='fixed'>
+      <parent>L1</parent>
+      <child>M1::L3</child>
+    </joint>
+    <frame name='F1' attached_to='J1'/>
+    <frame name='F2' attached_to='J2'/>
+  </model>
+</world>)""";
+  auto [plant, scene_graph] = ParseTestString(model_string, "1.8");
+
+  ASSERT_NE(nullptr, plant);
+  plant->Finalize();
+  auto context = plant->CreateDefaultContext();
+
+  const RigidTransformd X_WF1_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                       Vector3d(0.1, 0.2, 0.0));
+
+  const RigidTransformd X_WF2_expected(RollPitchYawd(0.0, 0.0, 0.0),
+                                       Vector3d(0.1, 0.2, 0.3));
+
+  const auto& frame_F1 = plant->GetFrameByName("F1");
+  const auto& frame_F2 = plant->GetFrameByName("F2");
+  const RigidTransformd X_WF1 = frame_F1.CalcPoseInWorld(*context);
+  const RigidTransformd X_WF2 = frame_F2.CalcPoseInWorld(*context);
+  EXPECT_TRUE(CompareMatrices(
+      X_WF1_expected.GetAsMatrix4(), X_WF1.GetAsMatrix4(), kEps));
+  EXPECT_TRUE(CompareMatrices(
+      X_WF2_expected.GetAsMatrix4(), X_WF2.GetAsMatrix4(), kEps));
+
+  // Also check that the frame is attached to the right body
+  EXPECT_EQ(frame_F1.body().index(),
+            plant->GetBodyByName("L2").index());
+  EXPECT_EQ(frame_F2.body().index(),
+            plant->GetBodyByName("L3").index());
 }
 
 GTEST_TEST(SdfParser, SupportNonDefaultCanonicalLink) {

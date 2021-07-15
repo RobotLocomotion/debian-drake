@@ -17,6 +17,7 @@
 #include "drake/solvers/test/linear_program_examples.h"
 #include "drake/solvers/test/mathematical_program_test_util.h"
 #include "drake/solvers/test/quadratic_program_examples.h"
+#include "drake/solvers/test/second_order_cone_program_examples.h"
 
 namespace drake {
 namespace solvers {
@@ -501,7 +502,6 @@ GTEST_TEST(SnoptSolverTest, BadIntegerParameter) {
   MathematicalProgram prog;
   prog.SetSolverOption(solver.solver_id(), "not an option", 15);
   DRAKE_EXPECT_THROWS_MESSAGE(solver.Solve(prog),
-      std::exception,
       "Error setting Snopt integer parameter not an option");
 }
 
@@ -510,7 +510,6 @@ GTEST_TEST(SnoptSolverTest, BadDoubleParameter) {
   MathematicalProgram prog;
   prog.SetSolverOption(solver.solver_id(), "not an option", 15.0);
   DRAKE_EXPECT_THROWS_MESSAGE(solver.Solve(prog),
-      std::exception,
       "Error setting Snopt double parameter not an option");
 }
 
@@ -519,7 +518,6 @@ GTEST_TEST(SnoptSolverTest, BadStringParameter) {
   MathematicalProgram prog;
   prog.SetSolverOption(solver.solver_id(), "not an option", "test");
   DRAKE_EXPECT_THROWS_MESSAGE(solver.Solve(prog),
-      std::exception,
       "Error setting Snopt string parameter not an option");
 }
 
@@ -531,6 +529,46 @@ GTEST_TEST(SnoptSolverTest, TestNonconvexQP) {
   }
 }
 
+TEST_P(TestEllipsoidsSeparation, TestSOCP) {
+  SnoptSolver snopt_solver;
+  if (snopt_solver.available()) {
+    SolveAndCheckSolution(snopt_solver, 1.E-8);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SnoptTest, TestEllipsoidsSeparation,
+    ::testing::ValuesIn(GetEllipsoidsSeparationProblems()));
+
+TEST_P(TestQPasSOCP, TestSOCP) {
+  SnoptSolver snopt_solver;
+  if (snopt_solver.available()) {
+    SolveAndCheckSolution(snopt_solver);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(SnoptTest, TestQPasSOCP,
+                         ::testing::ValuesIn(GetQPasSOCPProblems()));
+
+TEST_P(TestFindSpringEquilibrium, TestSOCP) {
+  SnoptSolver snopt_solver;
+  if (snopt_solver.available()) {
+    SolveAndCheckSolution(snopt_solver, 2E-3);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SnoptTest, TestFindSpringEquilibrium,
+    ::testing::ValuesIn(GetFindSpringEquilibriumProblems()));
+
+GTEST_TEST(TestSOCP, MaximizeGeometricMeanTrivialProblem1) {
+  MaximizeGeometricMeanTrivialProblem1 prob;
+  SnoptSolver solver;
+  if (solver.available()) {
+    const auto result = solver.Solve(prob.prog(), {}, {});
+    prob.CheckSolution(result, 4E-6);
+  }
+}
 }  // namespace test
 }  // namespace solvers
 }  // namespace drake

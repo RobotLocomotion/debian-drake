@@ -768,7 +768,7 @@ MatrixX<T> MultibodyPlant<T>::MakeActuationMatrix() const {
     // This method assumes actuators on single dof joints. Assert this
     // condition.
     DRAKE_DEMAND(actuator.joint().num_velocities() == 1);
-    B(actuator.joint().velocity_start(), actuator.index()) = 1;
+    B(actuator.joint().velocity_start(), int{actuator.index()}) = 1;
   }
   return B;
 }
@@ -1009,9 +1009,8 @@ void MultibodyPlant<T>::CalcContactJacobiansCache(
   auto& Jc = contact_jacobians->Jc;
   auto& R_WC_list = contact_jacobians->R_WC_list;
 
-  // TODO(amcastro-tri): consider caching contact pairs.
   this->CalcNormalAndTangentContactJacobians(
-      context, CalcDiscreteContactPairs(context), &Jn, &Jt, &R_WC_list);
+      context, EvalDiscreteContactPairs(context), &Jn, &Jt, &R_WC_list);
 
   Jc.resize(3 * Jn.rows(), num_velocities());
   for (int i = 0; i < Jn.rows(); ++i) {
@@ -1898,12 +1897,15 @@ void MultibodyPlant<symbolic::Expression>::CalcHydroelasticWithFallback(
 }
 
 template <typename T>
-std::vector<internal::DiscreteContactPair<T>>
-MultibodyPlant<T>::CalcDiscreteContactPairs(
-    const systems::Context<T>& context) const {
+void MultibodyPlant<T>::CalcDiscreteContactPairs(
+    const systems::Context<T>& context,
+    std::vector<internal::DiscreteContactPair<T>>* result) const {
   this->ValidateContext(context);
+  DRAKE_DEMAND(result != nullptr);
+  std::vector<internal::DiscreteContactPair<T>>& contact_pairs = *result;
+  contact_pairs.clear();
 
-  if (num_collision_geometries() == 0) return {};
+  if (num_collision_geometries() == 0) return;
 
   // N.B. For discrete hydro we use a first order quadrature rule.
   // Higher order quadratures are possible, however using a lower order
@@ -1943,9 +1945,8 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
         num_quadrature_pairs += num_quad_points * mesh.num_faces();
       }
     }
-    const int num_contact_pairs = num_point_pairs + num_quadrature_pairs;
 
-    std::vector<internal::DiscreteContactPair<T>> contact_pairs;
+    const int num_contact_pairs = num_point_pairs + num_quadrature_pairs;
     contact_pairs.reserve(num_contact_pairs);
 
     const auto& query_object = EvalGeometryQueryInput(context);
@@ -2094,8 +2095,6 @@ MultibodyPlant<T>::CalcDiscreteContactPairs(
         }
       }
     }
-
-    return contact_pairs;
   } else {
     drake::unused(context);
     throw std::domain_error(fmt::format("This method doesn't support T = {}.",
@@ -2161,8 +2160,8 @@ void MultibodyPlant<T>::CalcContactSolverResults(
 
   // Compute all contact pairs, including both penetration pairs and quadrature
   // pairs for discrete hydroelastic.
-  const std::vector<internal::DiscreteContactPair<T>> contact_pairs =
-      CalcDiscreteContactPairs(context0);
+  const std::vector<internal::DiscreteContactPair<T>>& contact_pairs =
+      EvalDiscreteContactPairs(context0);
   const int num_contacts = contact_pairs.size();
 
   // Compute normal and tangential velocity Jacobians at t0.
@@ -2913,6 +2912,14 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
            this->all_parameters_ticket()});
   cache_indexes_.generalized_contact_forces_continuous =
       generalized_contact_forces_continuous_cache_entry.cache_index();
+
+  // Cache discrete contact pairs.
+  const auto& discrete_contact_pairs_cache_entry = this->DeclareCacheEntry(
+      "Discrete contact pairs.",
+      &MultibodyPlant::CalcDiscreteContactPairs,
+      {this->xd_ticket(), this->all_parameters_ticket()});
+  cache_indexes_.discrete_contact_pairs =
+      discrete_contact_pairs_cache_entry.cache_index();
 }
 
 template <typename T>
@@ -3373,40 +3380,19 @@ AddMultibodyPlantSceneGraphResult<T> AddMultibodyPlantSceneGraph(
                                      std::move(scene_graph));
 }
 
-template <typename T>
-AddMultibodyPlantSceneGraphResult<T> AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<T>* builder) {
-  return AddMultibodyPlantSceneGraph(builder, 0.0);
-}
-
-// Add explicit instantiations for `AddMultibodyPlantSceneGraph`.
-// This does *not* support symbolic::Expression.
-template AddMultibodyPlantSceneGraphResult<double> AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<double>* builder,
-    std::unique_ptr<MultibodyPlant<double>> plant,
-    std::unique_ptr<geometry::SceneGraph<double>> scene_graph);
-
-template AddMultibodyPlantSceneGraphResult<double> AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<double>* builder, double time_step,
-    std::unique_ptr<geometry::SceneGraph<double>> scene_graph);
-
-template AddMultibodyPlantSceneGraphResult<double> AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<double>* builder);
-
-template
-AddMultibodyPlantSceneGraphResult<AutoDiffXd>
-AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<AutoDiffXd>* builder,
-    std::unique_ptr<MultibodyPlant<AutoDiffXd>> plant,
-    std::unique_ptr<geometry::SceneGraph<AutoDiffXd>> scene_graph);
-
-template AddMultibodyPlantSceneGraphResult<AutoDiffXd>
-AddMultibodyPlantSceneGraph(
-    systems::DiagramBuilder<AutoDiffXd>* builder, double time_step,
-    std::unique_ptr<geometry::SceneGraph<AutoDiffXd>> scene_graph);
-
-template AddMultibodyPlantSceneGraphResult<AutoDiffXd>
-AddMultibodyPlantSceneGraph(systems::DiagramBuilder<AutoDiffXd>* builder);
+DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS((
+    /* Use static_cast to disambiguate the two different overloads. */
+    static_cast<AddMultibodyPlantSceneGraphResult<T>(*)(
+        systems::DiagramBuilder<T>*, double,
+        std::unique_ptr<geometry::SceneGraph<T>>)>(
+            &AddMultibodyPlantSceneGraph),
+    /* Use static_cast to disambiguate the two different overloads. */
+    static_cast<AddMultibodyPlantSceneGraphResult<T>(*)(
+        systems::DiagramBuilder<T>*,
+        std::unique_ptr<MultibodyPlant<T>>,
+        std::unique_ptr<geometry::SceneGraph<T>>)>(
+            &AddMultibodyPlantSceneGraph)
+))
 
 }  // namespace multibody
 }  // namespace drake

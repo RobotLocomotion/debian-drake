@@ -18,6 +18,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/unused.h"
 #include "drake/common/value.h"
+#include "drake/systems/framework/abstract_value_cloner.h"
 #include "drake/systems/framework/abstract_values.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/continuous_state.h"
@@ -29,6 +30,7 @@
 #include "drake/systems/framework/system_constraint.h"
 #include "drake/systems/framework/system_output.h"
 #include "drake/systems/framework/system_scalar_converter.h"
+#include "drake/systems/framework/value_producer.h"
 
 namespace drake {
 namespace systems {
@@ -1053,18 +1055,22 @@ class LeafSystem : public System<T> {
 
   /** Declares that this System should reserve continuous state with
   @p num_state_variables state variables, which have no second-order
-  structure. */
-  void DeclareContinuousState(int num_state_variables);
+  structure.
+  @return index of the declared state (currently always zero). */
+  ContinuousStateIndex DeclareContinuousState(int num_state_variables);
 
   /** Declares that this System should reserve continuous state with @p num_q
   generalized positions, @p num_v generalized velocities, and @p num_z
-  miscellaneous state variables. */
-  void DeclareContinuousState(int num_q, int num_v, int num_z);
+  miscellaneous state variables.
+  @return index of the declared state (currently always zero). */
+  ContinuousStateIndex DeclareContinuousState(int num_q, int num_v, int num_z);
 
   /** Declares that this System should reserve continuous state with
   @p model_vector.size() miscellaneous state variables, stored in a
-  vector cloned from @p model_vector. */
-  void DeclareContinuousState(const BasicVector<T>& model_vector);
+  vector cloned from @p model_vector.
+  @return index of the declared state (currently always zero). */
+  ContinuousStateIndex DeclareContinuousState(
+      const BasicVector<T>& model_vector);
 
   /** Declares that this System should reserve continuous state with @p num_q
   generalized positions, @p num_v generalized velocities, and @p num_z
@@ -1072,9 +1078,10 @@ class LeafSystem : public System<T> {
   @p model_vector. Aborts if @p model_vector has the wrong size. If the
   @p model_vector declares any VectorBase::GetElementBounds()
   constraints, they will be re-declared as inequality constraints on this
-  system (see DeclareInequalityConstraint()). */
-  void DeclareContinuousState(const BasicVector<T>& model_vector, int num_q,
-                              int num_v, int num_z);
+  system (see DeclareInequalityConstraint()).
+  @return index of the declared state (currently always zero). */
+  ContinuousStateIndex DeclareContinuousState(
+      const BasicVector<T>& model_vector, int num_q, int num_v, int num_z);
   //@}
 
   /** @name            Declare discrete state variables
@@ -1150,7 +1157,7 @@ class LeafSystem : public System<T> {
 
   You should normally provide a meaningful name for any input port you
   create. Names must be unique for this system (passing in a duplicate
-  name will throw std::logic_error). However, if you specify
+  name will throw std::exception). However, if you specify
   kUseDefaultName as the name, then a default name of e.g. "u2", where 2
   is the input port number will be provided. An empty name is not
   permitted. */
@@ -1330,7 +1337,7 @@ class LeafSystem : public System<T> {
     auto& port = CreateVectorLeafOutputPort(
         NextOutputPortName(std::move(name)), model_vector.size(),
         // Allocator function just clones the given model vector.
-        MakeAllocCallback<BasicVector<T>>(model_vector),
+        MakeAllocateCallback<BasicVector<T>>(model_vector),
         // Calculator function downcasts to specific vector type and invokes
         // the given member function.
         [this_ptr, calc](const Context<T>& context, BasicVector<T>* result) {
@@ -1418,7 +1425,7 @@ class LeafSystem : public System<T> {
     DRAKE_DEMAND(this_ptr != nullptr);
 
     auto& port = CreateAbstractLeafOutputPort(
-        NextOutputPortName(std::move(name)), MakeAllocCallback(model_value),
+        NextOutputPortName(std::move(name)), MakeAllocateCallback(model_value),
         [this_ptr, calc](const Context<T>& context, AbstractValue* result) {
           OutputType& typed_result = result->get_mutable_value<OutputType>();
           (this_ptr->*calc)(context, &typed_result);
@@ -1504,6 +1511,29 @@ class LeafSystem : public System<T> {
       typename LeafOutputPort<T>::CalcCallback calc_function,
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
+
+  /** Declares a vector-valued output port whose value is the continuous state
+  of this system.
+  @param state_index must be ContinuousStateIndex(0) for now, since LeafSystem
+  only supports a single continuous state group at the moment.
+  @pydrake_mkdoc_identifier{continuous} */
+  LeafOutputPort<T>& DeclareStateOutputPort(
+      std::variant<std::string, UseDefaultName> name,
+      ContinuousStateIndex state_index);
+
+  /** Declares a vector-valued output port whose value is the given discrete
+  state group of this system.
+  @pydrake_mkdoc_identifier{discrete} */
+  LeafOutputPort<T>& DeclareStateOutputPort(
+      std::variant<std::string, UseDefaultName> name,
+      DiscreteStateIndex state_index);
+
+  /** Declares an abstract-valued output port whose value is the given abstract
+  state of this system.
+  @pydrake_mkdoc_identifier{abstract} */
+  LeafOutputPort<T>& DeclareStateOutputPort(
+      std::variant<std::string, UseDefaultName> name,
+      AbstractStateIndex state_index);
   //@}
 
   // =========================================================================
@@ -2018,26 +2048,15 @@ class LeafSystem : public System<T> {
   // port size for vector ports. Prerequisites list must not be empty.
   LeafOutputPort<T>& CreateCachedLeafOutputPort(
       std::string name, const std::optional<int>& fixed_size,
-      typename CacheEntry::AllocCallback allocator,
-      typename CacheEntry::CalcCallback calculator,
+      ValueProducer value_producer,
       std::set<DependencyTicket> calc_prerequisites);
 
   // Creates an abstract output port allocator function from an arbitrary type
   // model value.
   template <typename OutputType>
-  static typename LeafOutputPort<T>::AllocCallback MakeAllocCallback(
+  static ValueProducer::AllocateCallback MakeAllocateCallback(
       const OutputType& model_value) {
-    // The given model value may have *either* a copy constructor or a Clone()
-    // method, since it just has to be suitable for containing in an
-    // AbstractValue. We need to create a functor that is copy constructible,
-    // so need to wrap the model value to give it a copy constructor. Drake's
-    // copyable_unique_ptr does just that, so is suitable for capture by the
-    // allocator functor here.
-    copyable_unique_ptr<AbstractValue> owned_model(
-        new Value<OutputType>(model_value));
-    return [model = std::move(owned_model)]() {
-      return model->Clone();
-    };
+    return internal::AbstractValueCloner(model_value);
   }
 
   // If @p model_vector's GetElementBounds provides any constraints,

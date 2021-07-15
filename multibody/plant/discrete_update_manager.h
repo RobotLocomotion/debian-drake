@@ -1,7 +1,9 @@
 #pragma once
+
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "drake/geometry/geometry_ids.h"
@@ -89,9 +91,10 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
     DRAKE_DEMAND(plant != nullptr);
     DRAKE_DEMAND(plant->is_finalized());
     plant_ = plant;
+    mutable_plant_ = plant;
     multibody_state_index_ = plant_->GetDiscreteStateIndexOrThrow();
     ExtractModelInfo();
-    DeclareCacheEntries(plant);
+    DeclareCacheEntries();
   }
 
   /* Given the state of the model stored in `context`, this method performs the
@@ -152,8 +155,8 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   virtual void ExtractModelInfo() {}
 
   /* Derived DiscreteUpdateManager should override this method to declare
-   cache entries in the owning MultibodyPlant `plant`. */
-  virtual void DeclareCacheEntries(MultibodyPlant<T>*) {}
+   cache entries in the owning MultibodyPlant. */
+  virtual void DeclareCacheEntries() {}
 
   /* Returns the discrete state index of the rigid position and velocity states
    declared by MultibodyPlant. */
@@ -169,10 +172,17 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   const MultibodyTree<T>& internal_tree() const;
 
+  systems::CacheEntry& DeclareCacheEntry(std::string description,
+                                         systems::ValueProducer,
+                                         std::set<systems::DependencyTicket>);
+
   const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const systems::Context<T>& context) const;
 
   const internal::ContactJacobians<T>& EvalContactJacobians(
+      const systems::Context<T>& context) const;
+
+  const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
       const systems::Context<T>& context) const;
 
   std::vector<CoulombFriction<double>> CalcCombinedFrictionCoefficients(
@@ -181,9 +191,6 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   void CalcNonContactForces(const systems::Context<T>& context, bool discrete,
                             MultibodyForces<T>* forces) const;
-
-  std::vector<internal::DiscreteContactPair<T>> CalcDiscreteContactPairs(
-      const systems::Context<T>& context) const;
 
   // TODO(xuchenhan-tri): Remove the following calls to MbP solvers (which only
   //  solves for rigid-rigid contact) when the deformable-rigid two-way coupled
@@ -210,6 +217,9 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
   double default_contact_stiffness() const;
   double default_contact_dissipation() const;
+
+  const std::unordered_map<geometry::GeometryId, BodyIndex>&
+  geometry_id_to_body_index() const;
   /* @} */
 
   /* Concrete DiscreteUpdateManagers must override these NVI Calc methods to
@@ -229,6 +239,7 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
 
  private:
   const MultibodyPlant<T>* plant_{nullptr};
+  MultibodyPlant<T>* mutable_plant_{nullptr};
   systems::DiscreteStateIndex multibody_state_index_;
 };
 }  // namespace internal

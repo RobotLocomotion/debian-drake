@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "drake/common/drake_assert.h"
@@ -395,6 +396,8 @@ GTEST_TEST(TestAddDecisionVariables, AddDecisionVariables1) {
   EXPECT_EQ(prog.FindDecisionVariableIndex(x2), 2);
   EXPECT_EQ(prog.initial_guess().rows(), 3);
   EXPECT_EQ(prog.decision_variables().rows(), 3);
+  EXPECT_GT(
+      prog.required_capabilities().count(ProgramAttribute::kBinaryVariable), 0);
 
   const auto decision_variable_index = prog.decision_variable_index();
   {
@@ -456,6 +459,19 @@ GTEST_TEST(TestAddDecisionVariables, AddVariable3) {
   // variables intersects with the indeterminates.
   EXPECT_THROW(prog.AddDecisionVariables(VectorDecisionVariable<2>(x0, z(0))),
                std::runtime_error);
+
+  // Call AddDecisionVariables with unsupported variable type.
+  for (symbolic::Variable::Type unsupported_type :
+       {symbolic::Variable::Type::BOOLEAN,
+        symbolic::Variable::Type::RANDOM_UNIFORM,
+        symbolic::Variable::Type::RANDOM_GAUSSIAN,
+        symbolic::Variable::Type::RANDOM_EXPONENTIAL}) {
+    const symbolic::Variable unsupported_var("b", unsupported_type);
+    DRAKE_EXPECT_THROWS_MESSAGE(
+        prog.AddDecisionVariables(VectorDecisionVariable<1>(unsupported_var)),
+        std::runtime_error,
+        "MathematicalProgram does not support .* variables.");
+  }
 }
 
 GTEST_TEST(TestAddIndeterminates, TestAddIndeterminates1) {
@@ -2823,6 +2839,51 @@ GTEST_TEST(TestMathematicalProgram, TestGetBindingVariableValues) {
                               Vector2d(-2, 2)));
 }
 
+GTEST_TEST(TestMathematicalProgram, TestCheckSatisfied) {
+  MathematicalProgram prog;
+  const auto x = prog.NewContinuousVariables<3>();
+  const auto y = prog.NewContinuousVariables<2>();
+  std::vector<Binding<Constraint>> bindings;
+  bindings.emplace_back(prog.AddBoundingBoxConstraint(-.3, .4, x));
+  bindings.emplace_back(prog.AddBoundingBoxConstraint(-2, 5, y));
+  bindings.emplace_back(
+      prog.AddLinearEqualityConstraint(y[0] == 3 * x[0] + 2 * x[1]));
+
+  Vector3d x_guess = Vector3d::Constant(.39);
+  Vector2d y_guess = Vector2d::Constant(4.99);
+  y_guess[0] = 3*x_guess[0] + 2*x_guess[1];
+  prog.SetInitialGuess(x, x_guess);
+  prog.SetInitialGuess(y, y_guess);
+  EXPECT_TRUE(prog.CheckSatisfied(bindings[0], prog.initial_guess(), 0));
+  EXPECT_TRUE(prog.CheckSatisfied(bindings[1], prog.initial_guess(), 0));
+  EXPECT_TRUE(prog.CheckSatisfied(bindings[2], prog.initial_guess(), 1e-16));
+
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings[0], 0));
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings[1], 0));
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings[2], 1e-16));
+
+  EXPECT_TRUE(prog.CheckSatisfied(bindings, prog.initial_guess(), 1e-16));
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings, 1e-16));
+
+  x_guess[2] = .41;
+  prog.SetInitialGuess(x, x_guess);
+  EXPECT_FALSE(prog.CheckSatisfied(bindings[0], prog.initial_guess(), 0));
+  EXPECT_FALSE(prog.CheckSatisfiedAtInitialGuess(bindings[0], 0));
+  EXPECT_FALSE(prog.CheckSatisfied(bindings, prog.initial_guess(), 1e-16));
+  EXPECT_FALSE(prog.CheckSatisfiedAtInitialGuess(bindings, 1e-16));
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings[1], 0));
+
+  x_guess[2] = .39;
+  y_guess[0] = 3*x_guess[0] + 2*x_guess[1] + 0.2;
+  prog.SetInitialGuess(x, x_guess);
+  prog.SetInitialGuess(y, y_guess);
+  EXPECT_TRUE(prog.CheckSatisfiedAtInitialGuess(bindings[0], 0));
+  EXPECT_FALSE(prog.CheckSatisfied(bindings[2], prog.initial_guess(), 1e-16));
+  EXPECT_FALSE(prog.CheckSatisfiedAtInitialGuess(bindings[2], 1e-16));
+  EXPECT_FALSE(prog.CheckSatisfied(bindings, prog.initial_guess(), 1e-16));
+  EXPECT_FALSE(prog.CheckSatisfiedAtInitialGuess(bindings, 1e-16));
+}
+
 GTEST_TEST(TestMathematicalProgram, TestSetAndGetInitialGuess) {
   MathematicalProgram prog;
   const auto x = prog.NewContinuousVariables<3>();
@@ -3199,6 +3260,91 @@ GTEST_TEST(TestMathematicalProgram, ReparsePolynomial) {
     prog.Reparse(&p);
     EXPECT_PRED2(PolyEqual, p, expected);
   }
+}
+
+template <typename C>
+void RemoveCostTest(MathematicalProgram* prog,
+                    const symbolic::Expression& cost1_expr,
+                    const std::vector<Binding<C>>* program_costs,
+                    ProgramAttribute affected_capability) {
+  auto cost1 = prog->AddCost(cost1_expr);
+  // cost1 and cost2 represent the same cost, but their evaluators point to
+  // different objects.
+  auto cost2 = prog->AddCost(cost1_expr);
+  ASSERT_NE(cost1.evaluator().get(), cost2.evaluator().get());
+  EXPECT_EQ(program_costs->size(), 2u);
+  EXPECT_EQ(prog->RemoveCost(cost1), 1);
+  EXPECT_EQ(program_costs->size(), 1u);
+  EXPECT_EQ(program_costs->at(0).evaluator().get(), cost2.evaluator().get());
+  EXPECT_GT(prog->required_capabilities().count(affected_capability), 0);
+  // Now add another cost2 to program. If we remove cost2, now we get a program
+  // with empty linear cost.
+  prog->AddCost(cost2);
+  EXPECT_EQ(program_costs->size(), 2u);
+  EXPECT_EQ(prog->RemoveCost(cost2), 2);
+  EXPECT_EQ(program_costs->size(), 0u);
+  EXPECT_EQ(prog->required_capabilities().count(affected_capability), 0);
+
+  // Currently program_costs is empty.
+  EXPECT_EQ(prog->RemoveCost(cost1), 0);
+  EXPECT_EQ(prog->required_capabilities().count(affected_capability), 0);
+
+  prog->AddCost(cost1);
+  // prog doesn't contain cost2, removing cost2 from prog ends up as a no-opt.
+  EXPECT_EQ(prog->RemoveCost(cost2), 0);
+  EXPECT_EQ(program_costs->size(), 1u);
+  EXPECT_GT(prog->required_capabilities().count(affected_capability), 0);
+
+  // cost3 and cost1 share the same evaluator, but the associated variables are
+  // different.
+  VectorX<symbolic::Variable> cost3_vars = cost1.variables();
+  cost3_vars[0] = cost1.variables()[1];
+  cost3_vars[1] = cost1.variables()[0];
+  auto cost3 = prog->AddCost(cost1.evaluator(), cost3_vars);
+  EXPECT_EQ(prog->RemoveCost(cost1), 1);
+  EXPECT_EQ(program_costs->size(), 1u);
+  EXPECT_GT(prog->required_capabilities().count(affected_capability), 0);
+  EXPECT_EQ(program_costs->at(0).evaluator().get(), cost3.evaluator().get());
+}
+
+GTEST_TEST(TestMathematicalProgram, RemoveLinearCost) {
+  MathematicalProgram prog;
+  auto x = prog.NewContinuousVariables<2>();
+  RemoveCostTest<LinearCost>(&prog, x[0] + 2 * x[1], &(prog.linear_costs()),
+                             ProgramAttribute::kLinearCost);
+}
+
+GTEST_TEST(TestMathematicalProgram, RemoveQuadraticCost) {
+  MathematicalProgram prog;
+  auto x = prog.NewContinuousVariables<2>();
+  RemoveCostTest(&prog, x[0] * x[0] + 2 * x[1] * x[1],
+                 &(prog.quadratic_costs()), ProgramAttribute::kQuadraticCost);
+}
+
+GTEST_TEST(TestMathematicalProgram, RemoveGenericCost) {
+  MathematicalProgram prog;
+  auto x = prog.NewContinuousVariables<2>();
+  RemoveCostTest(&prog, x[0] * x[0] * x[1], &(prog.generic_costs()),
+                 ProgramAttribute::kGenericCost);
+}
+
+GTEST_TEST(TestMathematicalProgram, TestToString) {
+  MathematicalProgram prog;
+  auto x = prog.NewContinuousVariables<2>("x");
+  auto y = prog.NewIndeterminates<1>("y");
+  prog.AddLinearCost(2*x[0] + 3*x[1]);
+  prog.AddLinearConstraint(x[0]+x[1] <= 2.0);
+  prog.AddSosConstraint(x[0]*y[0]*y[0]);
+
+  std::string s = prog.to_string();
+  EXPECT_THAT(s, testing::HasSubstr("Decision variables"));
+  EXPECT_THAT(s, testing::HasSubstr("Indeterminates"));
+  EXPECT_THAT(s, testing::HasSubstr("Cost"));
+  EXPECT_THAT(s, testing::HasSubstr("Constraint"));
+  EXPECT_THAT(s, testing::HasSubstr("x"));
+  EXPECT_THAT(s, testing::HasSubstr("y"));
+  EXPECT_THAT(s, testing::HasSubstr("2"));
+  EXPECT_THAT(s, testing::HasSubstr("3"));
 }
 
 }  // namespace test

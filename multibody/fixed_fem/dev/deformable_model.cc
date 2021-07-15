@@ -1,17 +1,17 @@
 #include "drake/multibody/fixed_fem/dev/deformable_model.h"
 
+#include "drake/multibody/fem/simplex_gaussian_quadrature.h"
 #include "drake/multibody/fixed_fem/dev/corotated_model.h"
 #include "drake/multibody/fixed_fem/dev/dirichlet_boundary_condition.h"
 #include "drake/multibody/fixed_fem/dev/dynamic_elasticity_element.h"
 #include "drake/multibody/fixed_fem/dev/dynamic_elasticity_model.h"
 #include "drake/multibody/fixed_fem/dev/linear_constitutive_model.h"
 #include "drake/multibody/fixed_fem/dev/linear_simplex_element.h"
-#include "drake/multibody/fixed_fem/dev/simplex_gaussian_quadrature.h"
 #include "drake/multibody/plant/multibody_plant.h"
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 
 template <typename T>
 SoftBodyIndex DeformableModel<T>::RegisterDeformableBody(
@@ -82,8 +82,8 @@ void DeformableModel<T>::RegisterDeformableBodyHelper(
   constexpr int kSpatialDimension = 3;
   constexpr int kQuadratureOrder = 1;
   using QuadratureType =
-      SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
-  constexpr int kNumQuads = QuadratureType::num_quadrature_points();
+      internal::SimplexGaussianQuadrature<kNaturalDimension, kQuadratureOrder>;
+  constexpr int kNumQuads = QuadratureType::num_quadrature_points;
   using IsoparametricElementType =
       LinearSimplexElement<T, kNaturalDimension, kSpatialDimension, kNumQuads>;
   using ConstitutiveModelType = Model<T, kNumQuads>;
@@ -154,9 +154,9 @@ void DeformableModel<T>::DoDeclareSystemResources(MultibodyPlant<T>* plant) {
         this->DeclareDiscreteState(plant, model_discrete_states_[i]));
   }
 }
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    class ::drake::multibody::fixed_fem::DeformableModel);
+    class ::drake::multibody::fem::DeformableModel);

@@ -4,6 +4,7 @@
 #include <limits>
 #include <utility>
 
+#include "drake/common/default_scalars.h"
 #include "drake/geometry/proximity/distance_to_point_callback.h"
 #include "drake/math/rotation_matrix.h"
 
@@ -249,7 +250,7 @@ bool Callback(fcl::CollisionObjectd* object_A_ptr,
   const EncodedData encoding_b(*object_B_ptr);
 
   const bool can_collide = data.collision_filter.CanCollideWith(
-      encoding_a.encoding(), encoding_b.encoding());
+      encoding_a.id(), encoding_b.id());
 
   if (can_collide) {
     // Throw if the geometry-pair isn't supported.
@@ -297,19 +298,10 @@ bool Callback(fcl::CollisionObjectd* object_A_ptr,
   return false;
 }
 
-template void ComputeNarrowPhaseDistance<double>(
-    const fcl::CollisionObjectd&, const math::RigidTransform<double>&,
-    const fcl::CollisionObjectd&, const math::RigidTransform<double>&,
-    const fcl::DistanceRequestd&, SignedDistancePair<double>*);
-template void ComputeNarrowPhaseDistance<AutoDiffXd>(
-    const fcl::CollisionObjectd&, const math::RigidTransform<AutoDiffXd>&,
-    const fcl::CollisionObjectd&, const math::RigidTransform<AutoDiffXd>&,
-    const fcl::DistanceRequestd&, SignedDistancePair<AutoDiffXd>*);
-
-template bool Callback<double>(fcl::CollisionObjectd*, fcl::CollisionObjectd*,
-                               void*, double&);
-template bool Callback<AutoDiffXd>(fcl::CollisionObjectd*,
-                                   fcl::CollisionObjectd*, void*, double&);
+DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS((
+    &ComputeNarrowPhaseDistance<T>,
+    &Callback<T>
+))
 
 }  // namespace shape_distance
 }  // namespace internal
