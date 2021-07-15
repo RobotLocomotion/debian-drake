@@ -1,6 +1,8 @@
 from pydrake.solvers import mathematicalprogram as mp
 from pydrake.solvers.gurobi import GurobiSolver
 from pydrake.solvers.snopt import SnoptSolver
+from pydrake.solvers.scs import ScsSolver
+from pydrake.solvers.osqp import OsqpSolver
 from pydrake.solvers.mathematicalprogram import (
     LinearConstraint,
     MathematicalProgramResult,
@@ -55,6 +57,16 @@ class TestCost(unittest.TestCase):
 
         cost = mp.QuadraticCost(np.array([[1., 2.], [2., 6.]]), b, c)
         self.assertTrue(cost.is_convex())
+
+    def test_l2norm_cost(self):
+        A = np.array([[1., 2.], [-.4, .7]])
+        b = np.array([0.5, -.4])
+        cost = mp.L2NormCost(A=A, b=b)
+        np.testing.assert_allclose(cost.A(), A)
+        np.testing.assert_allclose(cost.b(), b)
+        cost.UpdateCoefficients(new_A=2*A, new_b=2*b)
+        np.testing.assert_allclose(cost.A(), 2*A)
+        np.testing.assert_allclose(cost.b(), 2*b)
 
 
 class TestQP:
@@ -171,6 +183,13 @@ class TestMathematicalProgram(unittest.TestCase):
         x_val_new = np.array([1, 2])
         result.set_x_val(x_val_new)
         np.testing.assert_array_equal(x_val_new, result.get_x_val())
+
+    def test_str(self):
+        qp = TestQP()
+        s = str(qp.prog)
+        self.assertIn("Decision variables", s)
+        self.assertIn("LinearConstraint", s)
+        self.assertIn("QuadraticCost", s)
 
 # TODO(jwnimmer-tri) MOSEK is also able to solve mixed integer programs;
     # perhaps we should test both of them?
@@ -448,6 +467,26 @@ class TestMathematicalProgram(unittest.TestCase):
         np.testing.assert_allclose(
             prog.GetBindingVariableValues(binding2, x_val), np.array([1, 2]))
 
+    def test_prog_check_satisfied(self):
+        prog = mp.MathematicalProgram()
+        x = prog.NewContinuousVariables(3)
+        binding1 = prog.AddBoundingBoxConstraint(-1, 1, x[0])
+        binding2 = prog.AddLinearConstraint(x[1]+x[2] <= 2.0)
+        x_val = np.array([-2, .1, .3])
+        self.assertTrue(
+            prog.CheckSatisfied(binding=binding2, prog_var_vals=x_val,
+                                tol=0.0))
+        self.assertFalse(
+            prog.CheckSatisfied(bindings=[binding1, binding2],
+                                prog_var_vals=x_val,
+                                tol=0.0))
+        prog.SetInitialGuessForAllVariables(x_val)
+        self.assertTrue(
+            prog.CheckSatisfiedAtInitialGuess(binding=binding2, tol=0.0))
+        self.assertFalse(
+            prog.CheckSatisfiedAtInitialGuess(
+                bindings=[binding1, binding2], tol=0.0))
+
     def test_matrix_variables(self):
         prog = mp.MathematicalProgram()
         x = prog.NewContinuousVariables(2, 2, "x")
@@ -463,12 +502,51 @@ class TestMathematicalProgram(unittest.TestCase):
         # Just check spelling.
         y = prog.NewIndeterminates(2, 2, "y")
 
+    def test_linear_equality_constraint(self):
+        Aeq = np.array([[2, 3.], [1., 2.], [3, 4]])
+        beq = np.array([1., 2., 3.])
+        constraint = mp.LinearEqualityConstraint(Aeq=Aeq, beq=beq)
+        np.testing.assert_array_equal(constraint.A(), Aeq)
+        np.testing.assert_array_equal(constraint.upper_bound(), beq)
+
+        constraint = mp.LinearEqualityConstraint(
+            a=np.array([1., 2., 3.]), beq=1)
+        np.testing.assert_array_equal(constraint.A(), np.array([[1., 2., 3.]]))
+        np.testing.assert_array_equal(constraint.upper_bound(), np.array([1.]))
+
+    def test_bounding_box_constraint(self):
+        constraint = mp.BoundingBoxConstraint(
+            lb=np.array([1., 2.]), ub=np.array([2., 3.]))
+        np.testing.assert_array_equal(
+            constraint.lower_bound(), np.array([1., 2.]))
+        np.testing.assert_array_equal(
+            constraint.upper_bound(), np.array([2., 3.]))
+
+    def test_quadratic_constraint(self):
+        constraint = mp.QuadraticConstraint(
+            Q0=np.eye(2), b=np.array([1, 2.]), lb=0.5, ub=1.)
+        np.testing.assert_array_equal(constraint.Q(), np.eye(2))
+        np.testing.assert_array_equal(constraint.b(), np.array([1, 2.]))
+
+    def test_positive_semidefinite_constraint(self):
+        constraint = mp.PositiveSemidefiniteConstraint(rows=3)
+        self.assertEqual(constraint.matrix_rows(), 3)
+
+    def test_linear_matrix_inequality_constraint(self):
+        constraint = mp.LinearMatrixInequalityConstraint(
+            F=[np.eye(3), 2 * np.eye(3), np.ones((3, 3))],
+            symmetry_tolerance=1E-12)
+        self.assertEqual(constraint.matrix_rows(), 3)
+
     def test_sdp(self):
         prog = mp.MathematicalProgram()
         S = prog.NewSymmetricContinuousVariables(3, "S")
         prog.AddLinearConstraint(S[0, 1] >= 1)
         prog.AddPositiveSemidefiniteConstraint(S)
         self.assertEqual(len(prog.positive_semidefinite_constraints()), 1)
+        self.assertEqual(
+            prog.positive_semidefinite_constraints()[0].evaluator().
+            matrix_rows(), 3)
         prog.AddPositiveSemidefiniteConstraint(S+S)
         prog.AddPositiveDiagonallyDominantMatrixConstraint(X=S)
         prog.AddScaledDiagonallyDominantMatrixConstraint(X=S)
@@ -653,17 +731,22 @@ class TestMathematicalProgram(unittest.TestCase):
     def test_add_exponential_cone_constraint(self):
         prog = mp.MathematicalProgram()
         x = prog.NewContinuousVariables(2)
-        cnstr1 = prog.AddExponentialConeConstraint(
-            A=np.array([[1., 2.], [2., 3.], [0., 1.]]),
-            b=np.array([1., 2., 3.]),
-            vars=x)
-        self.assertIsInstance(cnstr1.evaluator(), mp.ExponentialConeConstraint)
+        A = np.array([[1., 2.], [2., 3.], [0., 1.]])
+        b = np.array([1., 2., 3.])
+        constraint1 = prog.AddExponentialConeConstraint(A=A, b=b, vars=x)
+        np.testing.assert_array_equal(constraint1.evaluator().A(), A)
+        np.testing.assert_array_equal(constraint1.evaluator().b(), b)
 
-        cnstr2 = prog.AddExponentialConeConstraint(
+        constraint2 = prog.AddExponentialConeConstraint(
             z=np.array([x[0] + 1, x[0] * 2, x[1] + 2]))
-        self.assertIsInstance(cnstr2.evaluator(), mp.ExponentialConeConstraint)
+        self.assertIsInstance(
+            constraint2.evaluator(), mp.ExponentialConeConstraint)
 
         self.assertEqual(len(prog.exponential_cone_constraints()), 2)
+
+        constraint3 = mp.ExponentialConeConstraint(A=A, b=b)
+        np.testing.assert_array_equal(constraint3.A(), A)
+        np.testing.assert_array_equal(constraint3.b(), b)
 
     def test_linear_constraints(self):
         # TODO(eric.cousineau): Add more general tests
@@ -979,6 +1062,15 @@ class TestMathematicalProgram(unittest.TestCase):
         x_expected = np.array([1-2**(-0.5), 1-2**(-0.5)])
         self.assertTrue(np.allclose(result.GetSolution(x), x_expected))
 
+    def test_lorentz_cone_constraint(self):
+        A = np.array([[1, 2], [-1, -3], [2, 3.]])
+        b = np.array([2., 3., 4.])
+        constraint = mp.LorentzConeConstraint(
+            A=A, b=b,
+            eval_type=mp.LorentzConeConstraint.EvalType.kConvexSmooth)
+        np.testing.assert_array_equal(constraint.A().todense(), A)
+        np.testing.assert_array_equal(constraint.b(), b)
+
     def test_add_lorentz_cone_constraint(self):
         # Call AddLorentzConeConstraint, make sure no error is thrown.
         prog = mp.MathematicalProgram()
@@ -996,6 +1088,14 @@ class TestMathematicalProgram(unittest.TestCase):
         np.testing.assert_allclose(
             constraint.evaluator().A().todense(), A)
         np.testing.assert_allclose(constraint.evaluator().b(), b)
+
+    def test_rotated_lorentz_cone_constraint(self):
+        A = np.array(
+            [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.], [10., 11., 12.]])
+        b = np.array([1., 2., 3, 4])
+        constraint = mp.RotatedLorentzConeConstraint(A=A, b=b)
+        np.testing.assert_array_equal(constraint.A().todense(), A)
+        np.testing.assert_array_equal(constraint.b(), b)
 
     def test_add_rotated_lorentz_cone_constraint(self):
         prog = mp.MathematicalProgram()
@@ -1019,14 +1119,23 @@ class TestMathematicalProgram(unittest.TestCase):
         prog = mp.MathematicalProgram()
         F = [np.eye(2), np.array([[0, 1], [1., 0.]])]
         x = prog.NewContinuousVariables(1)
-        cnstr = prog.AddLinearMatrixInequalityConstraint(F=F, vars=x)
+        constraint = prog.AddLinearMatrixInequalityConstraint(F=F, vars=x)
         self.assertIsInstance(
-            cnstr.evaluator(), mp.LinearMatrixInequalityConstraint)
-        self.assertEqual(cnstr.evaluator().matrix_rows(), 2)
-        self.assertEqual(len(cnstr.evaluator().F()), 2)
-        np.testing.assert_array_equal(cnstr.evaluator().F()[0], F[0])
-        np.testing.assert_array_equal(cnstr.evaluator().F()[1], F[1])
+            constraint.evaluator(), mp.LinearMatrixInequalityConstraint)
+        self.assertEqual(constraint.evaluator().matrix_rows(), 2)
+        self.assertEqual(len(constraint.evaluator().F()), 2)
+        np.testing.assert_array_equal(constraint.evaluator().F()[0], F[0])
+        np.testing.assert_array_equal(constraint.evaluator().F()[1], F[1])
         self.assertEqual(len(prog.linear_matrix_inequality_constraints()), 1)
+
+    def test_solver_id(self):
+        self.assertEqual(ScsSolver().solver_id(), ScsSolver().solver_id())
+        self.assertNotEqual(ScsSolver().solver_id(), OsqpSolver().solver_id())
+        # Test the hash function, by checking the set size.
+        self.assertEqual(
+            len({ScsSolver().solver_id(), ScsSolver().solver_id()}), 1)
+        self.assertEqual(
+            len({ScsSolver().solver_id(), OsqpSolver().solver_id()}), 2)
 
     def test_solver_options(self):
         prog = mp.MathematicalProgram()
@@ -1050,6 +1159,9 @@ class TestMathematicalProgram(unittest.TestCase):
         options_object.SetOption(solver_id, "double_key", 1.0)
         options_object.SetOption(solver_id, "int_key", 2)
         options_object.SetOption(solver_id, "string_key", "3")
+        options_object.SetOption(mp.CommonSolverOption.kPrintToConsole, 1)
+        options_object.SetOption(
+            mp.CommonSolverOption.kPrintFileName, "foo.txt")
         options = options_object.GetOptions(solver_id)
         self.assertDictEqual(
             options, {"double_key": 1.0, "int_key": 2, "string_key": "3"})
@@ -1089,6 +1201,30 @@ class TestMathematicalProgram(unittest.TestCase):
         numpy_compare.assert_equal(prog.decision_variables()[1], a1)
         numpy_compare.assert_equal(prog.indeterminates()[0], x0)
         numpy_compare.assert_equal(prog.indeterminate(1), x1)
+
+    def test_make_first_available_solver(self):
+        gurobi_solver = GurobiSolver()
+        scs_solver = ScsSolver()
+        if scs_solver.available() and scs_solver.enabled():
+            solver = mp.MakeFirstAvailableSolver(
+                [gurobi_solver.solver_id(), scs_solver.solver_id()])
+
+    def test_remove_cost(self):
+        prog = mp.MathematicalProgram()
+        x = prog.NewContinuousVariables(3)
+        linear_cost1 = prog.AddLinearCost(x[0] + 2 * x[1])
+        prog.RemoveCost(linear_cost1)
+        self.assertEqual(len(prog.linear_costs()), 0)
+
+        quadratic_cost1 = prog.AddQuadraticCost(x[0] * x[0] + 2 * x[1] * x[1])
+        quadratic_cost2 = prog.AddQuadraticCost(x[2] * x[2])
+        prog.RemoveCost(quadratic_cost1)
+        self.assertEqual(len(prog.quadratic_costs()), 1)
+
+        generic_cost1 = prog.AddCost(x[0] * x[1] * x[2])
+        generic_cost2 = prog.AddCost(x[0] * x[1] * x[2] * x[2])
+        prog.RemoveCost(generic_cost2)
+        self.assertEqual(len(prog.generic_costs()), 1)
 
 
 class DummySolverInterface(SolverInterface):

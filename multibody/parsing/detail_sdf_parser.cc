@@ -512,13 +512,29 @@ void AddJointFromSpecification(
 // object.
 std::string LoadSdf(
     sdf::Root* root,
-    const DataSource& data_source) {
+    const DataSource& data_source,
+    const PackageMap& package_map) {
   data_source.DemandExactlyOne();
 
   std::string root_dir;
+  // TODO(marcoag) ensure that we propagate the right ParserConfig instance.
+  sdf::ParserConfig parser_config;
+  parser_config.SetWarningsPolicy(sdf::EnforcementPolicy::ERR);
+  parser_config.SetDeprecatedElementsPolicy(sdf::EnforcementPolicy::WARN);
+  parser_config.SetFindCallback(
+    [=](const std::string &_input) {
+      return ResolveUri(_input, package_map, ".");
+    });
+  // TODO(#15018): This means that unrecognized elements won't be shown to a
+  // user directly (via console or exception). We should change unrecognized
+  // elements policy to print a warning, and later become an error.
+  DRAKE_DEMAND(
+      parser_config.UnrecognizedElementsPolicy()
+      == sdf::EnforcementPolicy::LOG);
+
   if (data_source.file_name) {
     const std::string full_path = GetFullPath(*data_source.file_name);
-    ThrowAnyErrors(root->Load(full_path));
+    ThrowAnyErrors(root->Load(full_path, parser_config));
     // Uses the directory holding the SDF to be the root directory
     // in which to search for files referenced within the SDF file.
     size_t found = full_path.find_last_of("/\\");
@@ -531,7 +547,8 @@ std::string LoadSdf(
     }
   } else {
     DRAKE_DEMAND(data_source.file_contents);
-    ThrowAnyErrors(root->LoadSdfString(*data_source.file_contents));
+    ThrowAnyErrors(root->LoadSdfString(*data_source.file_contents,
+                                       parser_config));
   }
 
   return root_dir;
@@ -669,7 +686,31 @@ const Frame<double>& AddFrameFromSpecification(
       const auto [parent_model_instance, local_name] =
           GetResolvedModelInstanceAndLocalName(frame_spec.AttachedTo(),
                                                model_instance, *plant);
-      parent_frame = &plant->GetFrameByName(local_name, parent_model_instance);
+      if (plant->HasFrameNamed(local_name, parent_model_instance)) {
+        parent_frame =
+            &plant->GetFrameByName(local_name, parent_model_instance);
+      } else {
+        // If there is no frame named `local_name`, the `attached_to` attribute
+        // must be pointing to something we don't create implicit frames for in
+        // Drake. Currently these are models and joints. Models are handled in
+        // the first `if` block, so we're dealing with joints here. Since joints
+        // may end up in a model instance different from the model in which they
+        // were defined, we don't bother to find the joint and use its child
+        // frame. Instead we ask libsdformat to resolve the body associated with
+        // whatever is referenced by the `attached_to` attribute. Since this is
+        // a body, we're assured that its implicit frame exists in the plant.
+        std::string resolved_attached_to_body_name;
+        ThrowAnyErrors(
+            frame_spec.ResolveAttachedToBody(resolved_attached_to_body_name));
+
+        const std::string resolved_attached_to_body_absolute_name =
+            parsing::PrefixName(
+                parsing::GetInstanceScopeName(*plant, model_instance),
+                resolved_attached_to_body_name);
+        parent_frame = parsing::GetScopedFrameByNameMaybe(
+            *plant, resolved_attached_to_body_absolute_name);
+        DRAKE_DEMAND(nullptr != parent_frame);
+      }
     }
   }
   const Frame<double>& frame =
@@ -930,7 +971,7 @@ ModelInstanceIndex AddModelFromSdf(
 
   sdf::Root root;
 
-  std::string root_dir = LoadSdf(&root, data_source);
+  std::string root_dir = LoadSdf(&root, data_source, package_map);
 
   // TODO(jwnimmer-tri) When we upgrade to a version of libsdformat that no
   // longer offers ModelCount(), remove this entire paragraph of code.
@@ -974,7 +1015,7 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
 
   sdf::Root root;
 
-  std::string root_dir = LoadSdf(&root, data_source);
+  std::string root_dir = LoadSdf(&root, data_source, package_map);
 
   // Throw an error if there are no models or worlds.
   if (root.Model() == nullptr && root.WorldCount() == 0) {

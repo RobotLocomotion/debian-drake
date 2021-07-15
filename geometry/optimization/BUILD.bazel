@@ -1,0 +1,119 @@
+# -*- python -*-
+
+load(
+    "@drake//tools/skylark:drake_cc.bzl",
+    "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
+)
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+package(default_visibility = ["//visibility:public"])
+
+drake_cc_package_library(
+    name = "optimization",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":convex_set",
+        ":iris",
+    ],
+)
+
+drake_cc_library(
+    name = "convex_set",
+    srcs = [
+        "convex_set.cc",
+        "hpolyhedron.cc",
+        "hyperellipsoid.cc",
+        "point.cc",
+        "vpolytope.cc",
+    ],
+    hdrs = [
+        "convex_set.h",
+        "hpolyhedron.h",
+        "hyperellipsoid.h",
+        "point.h",
+        "vpolytope.h",
+    ],
+    deps = [
+        "//geometry:scene_graph",
+        "//solvers:mathematical_program",
+        "//solvers:solve",
+    ],
+)
+
+drake_cc_library(
+    name = "iris",
+    srcs = ["iris.cc"],
+    hdrs = ["iris.h"],
+    deps = [
+        ":convex_set",
+        "//geometry:scene_graph",
+    ],
+)
+
+drake_cc_library(
+    name = "test_utilities",
+    testonly = 1,
+    srcs = ["test_utilities.cc"],
+    hdrs = ["test_utilities.h"],
+    deps = [
+        ":convex_set",
+        "//geometry:scene_graph",
+        "//solvers:mathematical_program",
+    ],
+)
+
+drake_cc_googletest(
+    name = "convex_set_test",
+    deps = [
+        ":convex_set",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "hpolyhedron_test",
+    deps = [
+        ":convex_set",
+        ":test_utilities",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "hyperellipsoid_test",
+    deps = [
+        ":convex_set",
+        ":test_utilities",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "iris_test",
+    deps = [
+        ":iris",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "point_test",
+    deps = [
+        ":convex_set",
+        ":test_utilities",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "vpolytope_test",
+    deps = [
+        ":convex_set",
+        ":test_utilities",
+        "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+add_lint_tests()

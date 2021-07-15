@@ -3,6 +3,7 @@
 
 #include "pybind11/eigen.h"
 #include "pybind11/functional.h"
+#include "pybind11/operators.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
@@ -13,6 +14,7 @@
 #include "drake/bindings/pydrake/pydrake_pybind.h"
 #include "drake/bindings/pydrake/symbolic_types_pybind.h"
 #include "drake/solvers/choose_best_solver.h"
+#include "drake/solvers/common_solver_option.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/solvers/solve.h"
 #include "drake/solvers/solver_type_converter.h"
@@ -26,10 +28,12 @@ namespace pydrake {
 
 using solvers::Binding;
 using solvers::BoundingBoxConstraint;
+using solvers::CommonSolverOption;
 using solvers::Constraint;
 using solvers::Cost;
 using solvers::EvaluatorBase;
 using solvers::ExponentialConeConstraint;
+using solvers::L2NormCost;
 using solvers::LinearComplementarityConstraint;
 using solvers::LinearConstraint;
 using solvers::LinearCost;
@@ -41,6 +45,7 @@ using solvers::MathematicalProgramResult;
 using solvers::MatrixXDecisionVariable;
 using solvers::MatrixXIndeterminate;
 using solvers::PositiveSemidefiniteConstraint;
+using solvers::QuadraticConstraint;
 using solvers::QuadraticCost;
 using solvers::RotatedLorentzConeConstraint;
 using solvers::SolutionResult;
@@ -92,6 +97,9 @@ auto RegisterBinding(py::handle* scope, const string& name) {
     // `EvaluatorBase`'s generic constructor for attempting downcasting.
     // TODO(eric.cousineau): See if there is a more elegant mechanism for this.
     py::implicitly_convertible<B, Binding<EvaluatorBase>>();
+  }
+  if (std::is_base_of_v<Constraint, C> && !std::is_same_v<C, Constraint>) {
+    py::implicitly_convertible<B, Binding<Constraint>>();
   }
   return binding_cls;
 }
@@ -363,7 +371,21 @@ top-level documentation for :py:mod:`pydrake.math`.
 
   py::class_<SolverId>(m, "SolverId", doc.SolverId.doc)
       .def(py::init<std::string>(), py::arg("name"), doc.SolverId.ctor.doc)
-      .def("name", &SolverId::name, doc.SolverId.name.doc);
+      .def("name", &SolverId::name, doc.SolverId.name.doc)
+      .def("__hash__",
+          [](const SolverId& self) { return std::hash<SolverId>{}(self); })
+      .def(
+          "__eq__",
+          [](const SolverId& self, const SolverId& other) {
+            return self == other;
+          },
+          py::is_operator())
+      .def(
+          "__ne__",
+          [](const SolverId& self, const SolverId& other) {
+            return self != other;
+          },
+          py::is_operator());
 
   py::enum_<SolverType>(m, "SolverType", doc.SolverType.doc)
       .value("kClp", SolverType::kClp, doc.SolverType.kClp.doc)
@@ -389,17 +411,24 @@ top-level documentation for :py:mod:`pydrake.math`.
           py::overload_cast<const SolverId&, const std::string&, double>(
               &SolverOptions::SetOption),
           py::arg("solver_id"), py::arg("solver_option"),
-          py::arg("option_value"), doc.SolverOptions.SetOption.doc)
+          py::arg("option_value"),
+          doc.SolverOptions.SetOption.doc_double_option)
       .def("SetOption",
           py::overload_cast<const SolverId&, const std::string&, int>(
               &SolverOptions::SetOption),
           py::arg("solver_id"), py::arg("solver_option"),
-          py::arg("option_value"), doc.SolverOptions.SetOption.doc)
+          py::arg("option_value"), doc.SolverOptions.SetOption.doc_int_option)
       .def("SetOption",
           py::overload_cast<const SolverId&, const std::string&,
               const std::string&>(&SolverOptions::SetOption),
           py::arg("solver_id"), py::arg("solver_option"),
-          py::arg("option_value"), doc.SolverOptions.SetOption.doc)
+          py::arg("option_value"), doc.SolverOptions.SetOption.doc_str_option)
+      .def("SetOption",
+          py::overload_cast<CommonSolverOption,
+              const std::variant<double, int, std::string>&>(
+              &SolverOptions::SetOption),
+          py::arg("key"), py::arg("value"),
+          doc.SolverOptions.SetOption.doc_common_option)
       .def(
           "GetOptions",
           [](const SolverOptions& solver_options, SolverId solver_id) {
@@ -410,7 +439,16 @@ top-level documentation for :py:mod:`pydrake.math`.
             update(solver_options.GetOptionsStr(solver_id));
             return out;
           },
-          py::arg("solver_id"), doc.SolverOptions.GetOptionsDouble.doc);
+          py::arg("solver_id"), doc.SolverOptions.GetOptionsDouble.doc)
+      .def("common_solver_options", &SolverOptions::common_solver_options,
+          doc.SolverOptions.common_solver_options.doc);
+
+  py::enum_<CommonSolverOption>(
+      m, "CommonSolverOption", doc.CommonSolverOption.doc)
+      .value("kPrintFileName", CommonSolverOption::kPrintFileName,
+          doc.CommonSolverOption.kPrintFileName.doc)
+      .value("kPrintToConsole", CommonSolverOption::kPrintToConsole,
+          doc.CommonSolverOption.kPrintToConsole.doc);
 
   py::class_<MathematicalProgramResult>(
       m, "MathematicalProgramResult", doc.MathematicalProgramResult.doc)
@@ -540,6 +578,8 @@ top-level documentation for :py:mod:`pydrake.math`.
   prog_cls.def(py::init<>(), doc.MathematicalProgram.ctor.doc);
   DefClone(&prog_cls);
   prog_cls  // BR
+      .def("__str__", &MathematicalProgram::to_string,
+          doc.MathematicalProgram.to_string.doc)
       .def("NewContinuousVariables",
           static_cast<VectorXDecisionVariable (MathematicalProgram::*)(
               int, const std::string&)>(
@@ -606,21 +646,6 @@ top-level documentation for :py:mod:`pydrake.math`.
           py::arg("gramian"), py::arg("monomial_basis"), py::arg("type"),
           doc.MathematicalProgram.NewNonnegativePolynomial
               .doc_3args_gramian_monomial_basis_type)
-      .def("NewNonnegativePolynomial",
-          WrapDeprecated("Please use "
-                         "MathematicalProgram.NewNonnegativePolynomial(gramian,"
-                         " monomial_basis, type) instead. Notice that the "
-                         "first input argument should be gramian instead of "
-                         "grammian. This variant will be "
-                         "removed after 2021-07-01",
-              static_cast<symbolic::Polynomial (MathematicalProgram::*)(
-                  const Eigen::Ref<const MatrixX<symbolic::Variable>>&,
-                  const Eigen::Ref<const VectorX<symbolic::Monomial>>&,
-                  MathematicalProgram::NonnegativePolynomial)>(
-                  &MathematicalProgram::NewNonnegativePolynomial)),
-          py::arg("grammian"), py::arg("monomial_basis"), py::arg("type"),
-          "Same as NewNonnegativePolynomial, but the argument name is "
-          "incorrectly spelled as grammian")
       .def("NewNonnegativePolynomial",
           static_cast<std::pair<symbolic::Polynomial, MatrixXDecisionVariable> (
               MathematicalProgram::*)(const symbolic::Variables&, int degree,
@@ -1303,6 +1328,34 @@ for every column of ``prog_var_vals``. )""")
           },
           py::arg("binding"), py::arg("prog_var_vals"),
           doc.MathematicalProgram.GetBindingVariableValues.doc)
+      .def(
+          "CheckSatisfied",
+          [](const MathematicalProgram& prog,
+              const Binding<Constraint>& binding,
+              const VectorX<double>& prog_var_vals, double tol) {
+            return prog.CheckSatisfied(binding, prog_var_vals, tol);
+          },
+          py::arg("binding"), py::arg("prog_var_vals"), py::arg("tol") = 1e-6,
+          doc.MathematicalProgram.CheckSatisfied.doc)
+      .def(
+          "CheckSatisfied",
+          [](const MathematicalProgram& prog,
+              const std::vector<Binding<Constraint>>& bindings,
+              const VectorX<double>& prog_var_vals, double tol) {
+            return prog.CheckSatisfied(bindings, prog_var_vals, tol);
+          },
+          py::arg("bindings"), py::arg("prog_var_vals"), py::arg("tol") = 1e-6,
+          doc.MathematicalProgram.CheckSatisfied.doc_vector)
+      .def("CheckSatisfiedAtInitialGuess",
+          overload_cast_explicit<bool, const Binding<Constraint>&, double>(
+              &MathematicalProgram::CheckSatisfiedAtInitialGuess),
+          py::arg("binding"), py::arg("tol") = 1e-6,
+          doc.MathematicalProgram.CheckSatisfiedAtInitialGuess.doc)
+      .def("CheckSatisfiedAtInitialGuess",
+          overload_cast_explicit<bool, const std::vector<Binding<Constraint>>&,
+              double>(&MathematicalProgram::CheckSatisfiedAtInitialGuess),
+          py::arg("bindings"), py::arg("tol") = 1e-6,
+          doc.MathematicalProgram.CheckSatisfiedAtInitialGuess.doc_vector)
       .def("indeterminates", &MathematicalProgram::indeterminates,
           doc.MathematicalProgram.indeterminates.doc)
       .def("indeterminate", &MathematicalProgram::indeterminate, py::arg("i"),
@@ -1315,7 +1368,22 @@ for every column of ``prog_var_vals``. )""")
           py::arg("i"), doc.MathematicalProgram.decision_variable.doc)
       .def("decision_variable_index",
           &MathematicalProgram::decision_variable_index,
-          doc.MathematicalProgram.decision_variable_index.doc);
+          doc.MathematicalProgram.decision_variable_index.doc)
+      .def(  // Remove this overload when #15272 is resolved.
+          "RemoveCost",
+          [](MathematicalProgram* self, const Binding<LinearCost>& cost) {
+            return self->RemoveCost(cost);
+          },
+          py::arg("cost"), doc.MathematicalProgram.RemoveCost.doc)
+      .def(  // Remove this overload when #15272 is resolved.
+          "RemoveCost",
+          [](MathematicalProgram* self, const Binding<QuadraticCost>& cost) {
+            return self->RemoveCost(cost);
+          },
+          py::arg("cost"), doc.MathematicalProgram.RemoveCost.doc)
+      .def("RemoveCost", &MathematicalProgram::RemoveCost,
+          doc.MathematicalProgram.RemoveCost.doc);
+
   {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -1460,8 +1528,7 @@ for every column of ``prog_var_vals``. )""")
       m, "LinearConstraint", doc.LinearConstraint.doc)
       .def(py::init([](const Eigen::MatrixXd& A, const Eigen::VectorXd& lb,
                         const Eigen::VectorXd& ub) {
-        return std::unique_ptr<LinearConstraint>(
-            new LinearConstraint(A, lb, ub));
+        return std::make_unique<LinearConstraint>(A, lb, ub);
       }),
           py::arg("A"), py::arg("lb"), py::arg("ub"),
           doc.LinearConstraint.ctor.doc)
@@ -1495,20 +1562,56 @@ for every column of ``prog_var_vals``. )""")
           py::arg("new_lb"), py::arg("new_ub"), doc.Constraint.set_bounds.doc);
 
   py::class_<LorentzConeConstraint, Constraint,
-      std::shared_ptr<LorentzConeConstraint>>(
-      m, "LorentzConeConstraint", doc.LorentzConeConstraint.doc)
+      std::shared_ptr<LorentzConeConstraint>>
+      lorentz_cone_cls(
+          m, "LorentzConeConstraint", doc.LorentzConeConstraint.doc);
+
+  py::enum_<LorentzConeConstraint::EvalType>(
+      lorentz_cone_cls, "EvalType", doc.LorentzConeConstraint.EvalType.doc)
+      .value("kConvex", LorentzConeConstraint::EvalType::kConvex,
+          doc.LorentzConeConstraint.EvalType.kConvex.doc)
+      .value("kConvexSmooth", LorentzConeConstraint::EvalType::kConvexSmooth,
+          doc.LorentzConeConstraint.EvalType.kConvexSmooth.doc)
+      .value("kNonconvex", LorentzConeConstraint::EvalType::kNonconvex,
+          doc.LorentzConeConstraint.EvalType.kNonconvex.doc);
+
+  lorentz_cone_cls
+      .def(py::init([](const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+                        LorentzConeConstraint::EvalType eval_type) {
+        return std::make_unique<LorentzConeConstraint>(A, b, eval_type);
+      }),
+          py::arg("A"), py::arg("b"),
+          py::arg("eval_type") = LorentzConeConstraint::EvalType::kConvexSmooth,
+          doc.LorentzConeConstraint.ctor.doc)
       .def("A", &LorentzConeConstraint::A, doc.LorentzConeConstraint.A.doc)
       .def("b", &LorentzConeConstraint::b, doc.LorentzConeConstraint.b.doc);
+
   py::class_<RotatedLorentzConeConstraint, Constraint,
       std::shared_ptr<RotatedLorentzConeConstraint>>(
       m, "RotatedLorentzConeConstraint", doc.RotatedLorentzConeConstraint.doc)
+      .def(py::init([](const Eigen::MatrixXd& A, const Eigen::VectorXd& b) {
+        return std::make_unique<RotatedLorentzConeConstraint>(A, b);
+      }),
+          py::arg("A"), py::arg("b"), doc.RotatedLorentzConeConstraint.ctor.doc)
       .def("A", &RotatedLorentzConeConstraint::A,
           doc.RotatedLorentzConeConstraint.A.doc)
       .def("b", &RotatedLorentzConeConstraint::b,
           doc.RotatedLorentzConeConstraint.b.doc);
+
   py::class_<LinearEqualityConstraint, LinearConstraint,
       std::shared_ptr<LinearEqualityConstraint>>(
       m, "LinearEqualityConstraint", doc.LinearEqualityConstraint.doc)
+      .def(py::init([](const Eigen::MatrixXd& Aeq, const Eigen::VectorXd& beq) {
+        return std::make_unique<LinearEqualityConstraint>(Aeq, beq);
+      }),
+          py::arg("Aeq"), py::arg("beq"),
+          doc.LinearEqualityConstraint.ctor
+              .doc_2args_constEigenMatrixBase_constEigenMatrixBase)
+      .def(py::init([](const Eigen::RowVectorXd& a, double beq) {
+        return std::make_unique<LinearEqualityConstraint>(a, beq);
+      }),
+          py::arg("a"), py::arg("beq"),
+          doc.LinearEqualityConstraint.ctor.doc_2args_a_beq)
       .def(
           "UpdateCoefficients",
           [](LinearEqualityConstraint& self,  // BR
@@ -1520,16 +1623,46 @@ for every column of ``prog_var_vals``. )""")
 
   py::class_<BoundingBoxConstraint, LinearConstraint,
       std::shared_ptr<BoundingBoxConstraint>>(
-      m, "BoundingBoxConstraint", doc.BoundingBoxConstraint.doc);
+      m, "BoundingBoxConstraint", doc.BoundingBoxConstraint.doc)
+      .def(py::init([](const Eigen::VectorXd& lb, const Eigen::VectorXd& ub) {
+        return std::make_unique<BoundingBoxConstraint>(lb, ub);
+      }),
+          py::arg("lb"), py::arg("ub"), doc.BoundingBoxConstraint.ctor.doc);
+
+  py::class_<QuadraticConstraint, Constraint,
+      std::shared_ptr<QuadraticConstraint>>(
+      m, "QuadraticConstraint", doc.QuadraticConstraint.doc)
+      .def(py::init([](const Eigen::Ref<const Eigen::MatrixXd>& Q0,
+                        const Eigen::Ref<const Eigen::VectorXd>& b, double lb,
+                        double ub) {
+        return std::make_unique<QuadraticConstraint>(Q0, b, lb, ub);
+      }),
+          py::arg("Q0"), py::arg("b"), py::arg("lb"), py::arg("ub"),
+          doc.QuadraticConstraint.ctor.doc)
+      .def("Q", &QuadraticConstraint::Q, doc.QuadraticConstraint.Q.doc)
+      .def("b", &QuadraticConstraint::b, doc.QuadraticConstraint.b.doc);
 
   py::class_<PositiveSemidefiniteConstraint, Constraint,
       std::shared_ptr<PositiveSemidefiniteConstraint>>(m,
-      "PositiveSemidefiniteConstraint", doc.PositiveSemidefiniteConstraint.doc);
+      "PositiveSemidefiniteConstraint", doc.PositiveSemidefiniteConstraint.doc)
+      .def(py::init([](int rows) {
+        return std::make_unique<PositiveSemidefiniteConstraint>(rows);
+      }),
+          py::arg("rows"), doc.PositiveSemidefiniteConstraint.ctor.doc)
+      .def("matrix_rows", &PositiveSemidefiniteConstraint::matrix_rows,
+          doc.PositiveSemidefiniteConstraint.matrix_rows.doc);
 
   py::class_<LinearMatrixInequalityConstraint, Constraint,
       std::shared_ptr<LinearMatrixInequalityConstraint>>(m,
       "LinearMatrixInequalityConstraint",
       doc.LinearMatrixInequalityConstraint.doc)
+      .def(py::init([](const std::vector<Eigen::Ref<const Eigen::MatrixXd>>& F,
+                        double symmetry_tolerance) {
+        return std::make_unique<LinearMatrixInequalityConstraint>(
+            F, symmetry_tolerance);
+      }),
+          py::arg("F"), py::arg("symmetry_tolerance") = 1E-10,
+          doc.LinearMatrixInequalityConstraint.ctor.doc)
       .def("F", &LinearMatrixInequalityConstraint::F,
           doc.LinearMatrixInequalityConstraint.F.doc)
       .def("matrix_rows", &LinearMatrixInequalityConstraint::matrix_rows,
@@ -1542,9 +1675,29 @@ for every column of ``prog_var_vals``. )""")
 
   py::class_<ExponentialConeConstraint, Constraint,
       std::shared_ptr<ExponentialConeConstraint>>(
-      m, "ExponentialConeConstraint", doc.ExponentialConeConstraint.doc);
+      m, "ExponentialConeConstraint", doc.ExponentialConeConstraint.doc)
+      .def(py::init([](const Eigen::MatrixXd& A, const Eigen::Vector3d& b) {
+        Eigen::SparseMatrix<double> A_sparse = A.sparseView();
+        return std::make_unique<ExponentialConeConstraint>(A_sparse, b);
+      }),
+          py::arg("A"), py::arg("b"), doc.ExponentialConeConstraint.ctor.doc)
+      .def(
+          "A",
+          [](const ExponentialConeConstraint& self) {
+            return Eigen::MatrixXd(self.A());
+          },
+          doc.ExponentialConeConstraint.A.doc)
+      .def("b", &ExponentialConeConstraint::b,
+          doc.ExponentialConeConstraint.b.doc);
 
-  RegisterBinding<Constraint>(&m, "Constraint");
+  RegisterBinding<Constraint>(&m, "Constraint")
+      .def(py::init([](py::object binding) {
+        // Define a type-erased downcast to mirror the implicit
+        // "downcast-ability" of Binding<> types.
+        return std::make_unique<Binding<Constraint>>(
+            binding.attr("evaluator")().cast<std::shared_ptr<Constraint>>(),
+            binding.attr("variables")().cast<VectorXDecisionVariable>());
+      }));
   RegisterBinding<LinearConstraint>(&m, "LinearConstraint");
   RegisterBinding<LorentzConeConstraint>(&m, "LorentzConeConstraint");
   RegisterBinding<RotatedLorentzConeConstraint>(
@@ -1566,7 +1719,7 @@ for every column of ``prog_var_vals``. )""")
   py::class_<LinearCost, Cost, std::shared_ptr<LinearCost>>(
       m, "LinearCost", doc.LinearCost.doc)
       .def(py::init([](const Eigen::VectorXd& a, double b) {
-        return std::unique_ptr<LinearCost>(new LinearCost(a, b));
+        return std::make_unique<LinearCost>(a, b);
       }),
           py::arg("a"), py::arg("b"), doc.LinearCost.ctor.doc)
       .def("a", &LinearCost::a, doc.LinearCost.a.doc)
@@ -1583,8 +1736,7 @@ for every column of ``prog_var_vals``. )""")
       m, "QuadraticCost", doc.QuadraticCost.doc)
       .def(py::init([](const Eigen::MatrixXd& Q, const Eigen::VectorXd& b,
                         double c, std::optional<bool> is_convex) {
-        return std::unique_ptr<QuadraticCost>(
-            new QuadraticCost(Q, b, c, is_convex));
+        return std::make_unique<QuadraticCost>(Q, b, c, is_convex);
       }),
           py::arg("Q"), py::arg("b"), py::arg("c"),
           py::arg("is_convex") = py::none(), doc.QuadraticCost.ctor.doc)
@@ -1604,9 +1756,27 @@ for every column of ``prog_var_vals``. )""")
           py::arg("is_convex") = py::none(),
           doc.QuadraticCost.UpdateCoefficients.doc);
 
+  py::class_<L2NormCost, Cost, std::shared_ptr<L2NormCost>>(
+      m, "L2NormCost", doc.L2NormCost.doc)
+      .def(py::init([](const Eigen::MatrixXd& A, const Eigen::VectorXd& b) {
+        return std::make_unique<L2NormCost>(A, b);
+      }),
+          py::arg("A"), py::arg("b"), doc.L2NormCost.ctor.doc)
+      .def("A", &L2NormCost::A, doc.L2NormCost.A.doc)
+      .def("b", &L2NormCost::b, doc.L2NormCost.b.doc)
+      .def(
+          "UpdateCoefficients",
+          [](L2NormCost& self, const Eigen::MatrixXd& new_A,
+              const Eigen::VectorXd& new_b) {
+            self.UpdateCoefficients(new_A, new_b);
+          },
+          py::arg("new_A"), py::arg("new_b") = 0,
+          doc.L2NormCost.UpdateCoefficients.doc);
+
   RegisterBinding<Cost>(&m, "Cost");
   RegisterBinding<LinearCost>(&m, "LinearCost");
   RegisterBinding<QuadraticCost>(&m, "QuadraticCost");
+  RegisterBinding<L2NormCost>(&m, "L2NormCost");
 
   py::class_<VisualizationCallback, EvaluatorBase,
       std::shared_ptr<VisualizationCallback>>(
@@ -1620,6 +1790,8 @@ for every column of ``prog_var_vals``. )""")
           doc.ChooseBestSolver.doc)
       .def(
           "MakeSolver", &solvers::MakeSolver, py::arg("id"), doc.MakeSolver.doc)
+      .def("MakeFirstAvailableSolver", &solvers::MakeFirstAvailableSolver,
+          py::arg("solver_ids"), doc.MakeFirstAvailableSolver.doc)
       .def("Solve",
           py::overload_cast<const MathematicalProgram&,
               const std::optional<Eigen::VectorXd>&,

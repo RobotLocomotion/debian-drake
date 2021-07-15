@@ -154,7 +154,7 @@ GTEST_TEST(SystemScalarConverterTest, Empty) {
 }
 
 GTEST_TEST(SystemScalarConverterTest, DefaualtConstructor) {
-  // With the default ctor, nothing is convertible ...
+  // With the default ctor, nothing is convertible.
   const SystemScalarConverter dut;
   EXPECT_FALSE((dut.IsConvertible<double,     double>()));
   EXPECT_FALSE((dut.IsConvertible<double,     AutoDiffXd>()));
@@ -165,11 +165,6 @@ GTEST_TEST(SystemScalarConverterTest, DefaualtConstructor) {
   EXPECT_FALSE((dut.IsConvertible<Expression, double>()));
   EXPECT_FALSE((dut.IsConvertible<Expression, AutoDiffXd>()));
   EXPECT_FALSE((dut.IsConvertible<Expression, Expression>()));
-
-  // ... including non-standard scalar types.
-  using AD2 = Eigen::AutoDiffScalar<Eigen::Vector2d>;
-  EXPECT_FALSE((dut.IsConvertible<AD2, double>()));
-  EXPECT_FALSE((dut.IsConvertible<double, AD2>()));
 }
 
 GTEST_TEST(SystemScalarConverterTest, TestAnyToAnySystem) {
@@ -248,7 +243,7 @@ GTEST_TEST(SystemScalarConverterTest, SubclassMismatch) {
         EXPECT_THAT(
             std::string(e.what()),
             testing::MatchesRegex(
-                "SystemScalarConverter::Convert was configured to convert a "
+                "SystemScalarConverter was configured to convert a "
                 ".*::AnyToAnySystem<double> into a "
                 ".*::AnyToAnySystem<drake::AutoDiffXd> but was called with a "
                 ".*::SubclassOfAnyToAnySystem<double> at runtime"));
@@ -258,10 +253,20 @@ GTEST_TEST(SystemScalarConverterTest, SubclassMismatch) {
   }
 
   // However, if subtype checking is off, the conversion is allowed to upcast.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   {
     SystemScalarConverter dut(
         SystemTypeTag<AnyToAnySystem>{},
         SystemScalarConverter::GuaranteedSubtypePreservation::kDisabled);
+    const SubclassOfAnyToAnySystem<double> original;
+    EXPECT_TRUE(is_dynamic_castable<AnyToAnySystem<AutoDiffXd>>(
+        dut.Convert<AutoDiffXd, double>(original)));
+  }
+#pragma GCC diagnostic pop
+  {
+    auto dut = SystemScalarConverter::MakeWithoutSubtypeChecking<
+        AnyToAnySystem>();
     const SubclassOfAnyToAnySystem<double> original;
     EXPECT_TRUE(is_dynamic_castable<AnyToAnySystem<AutoDiffXd>>(
         dut.Convert<AutoDiffXd, double>(original)));

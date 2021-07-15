@@ -16,7 +16,7 @@
 
 namespace drake {
 namespace multibody {
-namespace fixed_fem {
+namespace fem {
 namespace {
 
 using Eigen::Vector3d;
@@ -25,6 +25,9 @@ using geometry::VolumeElement;
 using geometry::VolumeElementIndex;
 using geometry::VolumeMesh;
 using geometry::VolumeVertex;
+using geometry::internal::Bvh;
+using geometry::internal::DeformableVolumeMesh;
+using geometry::internal::Obb;
 using std::vector;
 
 /* The OctahedronVolume() and MakePyramidSurface() methods are stolen from
@@ -150,11 +153,12 @@ bool CompareSetOfVector3s(const std::vector<Vector3<T>>& A,
 template <typename T>
 DeformableContactSurface<T> MakeDeformableContactSurface(
     const math::RigidTransform<T>& X_DR) {
-  const VolumeMesh<T> volume_D = OctahedronVolume<T>();
+  const DeformableVolumeMesh<T> volume_D(OctahedronVolume<T>());
   /* Deformable contact assumes the rigid surface is double-valued, regardless
    of the scalar value for the volume mesh.  */
   const SurfaceMesh<double> surface_R = MakePyramidSurface<double>();
-  return ComputeTetMeshTriMeshContact<T>(volume_D, surface_R, X_DR);
+  const Bvh<Obb, SurfaceMesh<double>> bvh_R(surface_R);
+  return ComputeTetMeshTriMeshContact<T>(volume_D, surface_R, bvh_R, X_DR);
 }
 
 /* Limited test to show correctness of ComputeTetMeshTriMeshContact<T>().
@@ -267,6 +271,7 @@ GTEST_TEST(DeformableContactTest, NonTriangleContactPolygon) {
   }
   const SurfaceMesh<double> surface_R(std::move(faces),
                                       std::move(tri_vertices));
+  const Bvh<Obb, SurfaceMesh<double>> bvh_R(surface_R);
 
   /* Creates a tetrahedral mesh with a single tet whose intersection with the
    surface mesh is a axis-aligned unit square [-0.5, 0.5]x[-0.5, 0.5]x{0} in the
@@ -283,10 +288,11 @@ GTEST_TEST(DeformableContactTest, NonTriangleContactPolygon) {
   for (const auto& vertex : tet_vertex_data) {
     tet_vertices.emplace_back(vertex);
   }
-  const VolumeMesh<double> volume_D(std::move(tets), std::move(tet_vertices));
+  const DeformableVolumeMesh<double> volume_D(
+      VolumeMesh<double>(std::move(tets), std::move(tet_vertices)));
 
   const DeformableContactSurface<double> contact_D =
-      ComputeTetMeshTriMeshContact<double>(volume_D, surface_R,
+      ComputeTetMeshTriMeshContact<double>(volume_D, surface_R, bvh_R,
                                            math::RigidTransformd());
   ASSERT_EQ(contact_D.num_polygons(), 1);
   const ContactPolygonData<double>& data = contact_D.polygon_data(0);
@@ -313,7 +319,7 @@ internal::DeformableContactData<double> MakeDeformableContactData(
   return internal::DeformableContactData<double>({contact_pair}, volume_mesh);
 }
 
-GTEST_TEST(DeformbableContactTest, DeformableContactData) {
+GTEST_TEST(DeformableContactTest, DeformableContactData) {
   /* Move the rigid pyramid down, so only its square base intersects the top
    pyramidal region of the deformable octahedron. As a result, all vertices
    except v5 are participating in contact. */
@@ -340,7 +346,7 @@ GTEST_TEST(DeformbableContactTest, DeformableContactData) {
   }
 }
 
-GTEST_TEST(DeformbableContactTest, EmptyDeformableContactData) {
+GTEST_TEST(DeformableContactTest, EmptyDeformableContactData) {
   /* Move the rigid pyramid way down, so there is no contact. */
   const auto X_DR = math::RigidTransformd(Vector3<double>(0, 0, -15));
   DeformableContactSurface<double> contact_surface =
@@ -357,6 +363,6 @@ GTEST_TEST(DeformbableContactTest, EmptyDeformableContactData) {
 }
 
 }  // namespace
-}  // namespace fixed_fem
+}  // namespace fem
 }  // namespace multibody
 }  // namespace drake

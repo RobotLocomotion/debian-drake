@@ -46,6 +46,12 @@ namespace solvers {
  *
  * "OSQP" -- Parameter name and values as specified in OSQP Reference
  * https://osqp.org/docs/interfaces/solver_settings.html#solver-settings
+ *
+ * "dReal" -- Parameter name and values as specified in dReal Reference
+ * https://github.com/dreal/dreal4/blob/master/README.md#command-line-options.
+ * Note that Drake only supports a subset of the options listed in the
+ * reference. @see DrealSolver for the subset of these options supported by the
+ * solver interface.
  */
 class SolverOptions {
  public:
@@ -53,18 +59,28 @@ class SolverOptions {
 
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SolverOptions)
 
+  /** Sets a double-valued solver option for a specific solver.
+   * @pydrake_mkdoc_identifier{double_option}
+   */
   void SetOption(const SolverId& solver_id, const std::string& solver_option,
                  double option_value);
 
+  /** Sets an integer-valued solver option for a specific solver.
+   * @pydrake_mkdoc_identifier{int_option}
+   */
   void SetOption(const SolverId& solver_id, const std::string& solver_option,
                  int option_value);
 
+  /** Sets a string-valued solver option for a specific solver.
+   * @pydrake_mkdoc_identifier{str_option}
+   */
   void SetOption(const SolverId& solver_id, const std::string& solver_option,
                  const std::string& option_value);
 
   /// Set common options for all solvers supporting that option (for example,
   /// printing the progress in each iteration). If the solver doesn't support
   /// the option, the option is ignored.
+  /// @pydrake_mkdoc_identifier{common_option}
   void SetOption(CommonSolverOption key,
                  const std::variant<double, int, std::string>& value);
 
@@ -130,7 +146,7 @@ class SolverOptions {
    * @param double_keys The set of allowable keys for double options.
    * @param int_keys The set of allowable keys for int options.
    * @param str_keys The set of allowable keys for string options.
-   * @throw invalid_argument if the solver contains un-allowed options.
+   * @throws std::exception if the solver contains un-allowed options.
    */
   void CheckOptionKeysForSolver(
       const SolverId& solver_id,
