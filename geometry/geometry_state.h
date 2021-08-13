@@ -11,6 +11,7 @@
 
 #include "drake/common/autodiff.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/geometry/collision_filter_manager.h"
 #include "drake/geometry/frame_kinematics_vector.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/geometry_index.h"
@@ -100,7 +101,7 @@ class GeometryState {
   /** Implementation of SceneGraphInspector::num_frames().  */
   int get_num_frames() const { return static_cast<int>(frames_.size()); }
 
-  /** Implementation of SceneGraphInspector::all_frame_ids().  */
+  /** Implementation of SceneGraphInspector::GetAllFrameIds().  */
   FrameIdRange get_frame_ids() const { return FrameIdRange(&frames_); }
 
   /** Implementation of SceneGraphInspector::num_geometries().  */
@@ -138,6 +139,7 @@ class GeometryState {
   const GeometryVersion& geometry_version() const {
       return geometry_version_;
   }
+
   //@}
 
   /** @name          Sources and source-related data  */
@@ -396,13 +398,29 @@ class GeometryState {
     return geometry_engine_->ComputeContactSurfaces(X_WGs_);
   }
 
+  /** Implementation of QueryObject::ComputePolygonalContactSurfaces().  */
+  std::vector<ContactSurface<T>> ComputePolygonalContactSurfaces() const {
+    return geometry_engine_->ComputePolygonalContactSurfaces(X_WGs_);
+  }
+
   /** Implementation of QueryObject::ComputeContactSurfacesWithFallback().  */
   void ComputeContactSurfacesWithFallback(
       std::vector<ContactSurface<T>>* surfaces,
       std::vector<PenetrationAsPointPair<T>>* point_pairs) const {
-    DRAKE_DEMAND(surfaces);
-    DRAKE_DEMAND(point_pairs);
+    DRAKE_DEMAND(surfaces != nullptr);
+    DRAKE_DEMAND(point_pairs != nullptr);
     return geometry_engine_->ComputeContactSurfacesWithFallback(
+        X_WGs_, surfaces, point_pairs);
+  }
+
+  /** Implementation of
+   QueryObject::ComputePolygonalContactSurfacesWithFallback().  */
+  void ComputePolygonalContactSurfacesWithFallback(
+      std::vector<ContactSurface<T>>* surfaces,
+      std::vector<PenetrationAsPointPair<T>>* point_pairs) const {
+    DRAKE_DEMAND(surfaces != nullptr);
+    DRAKE_DEMAND(point_pairs != nullptr);
+    return geometry_engine_->ComputePolygonalContactSurfacesWithFallback(
         X_WGs_, surfaces, point_pairs);
   }
 
@@ -418,27 +436,16 @@ class GeometryState {
 
   //@}
 
-  /** @name               Proximity filters
+  /** @name        Collision filtering    */
 
-   This interface allows control over which pairs of geometries can even be
-   considered for proximity queries. This affects all queries that depend on
-   geometries with a proximity role.
-
-   See @ref scene_graph_collision_filtering "Scene Graph Collision Filtering"
-   for more details.   */
-  //@{
-
-  // TODO(SeanCurtis-TRI): Rename these functions to reflect the larger role
-  // in proximity queries _or_ change the scope of the filters.
-
-  /** Implementation of SceneGraph::ExcludeCollisionsWithin().  */
-  void ExcludeCollisionsWithin(const GeometrySet& set);
-
-  /** Implementation of SceneGraph::ExcludeCollisionsBetween().  */
-  void ExcludeCollisionsBetween(const GeometrySet& setA,
-                                const GeometrySet& setB);
-
-  //@}
+  /** Implementation of SceneGraph::collision_filter_manager(). */
+  CollisionFilterManager collision_filter_manager() {
+    geometry_version_.modify_proximity();
+    return CollisionFilterManager(
+        &geometry_engine_->collision_filter(), [this](const GeometrySet& set) {
+          return this->CollectIds(set, Role::kProximity);
+        });
+  }
 
   //---------------------------------------------------------------------------
   /** @name                Signed Distance Queries

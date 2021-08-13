@@ -38,6 +38,7 @@ namespace multibody {
 // pre-finalize.
 #define DRAKE_MBP_THROW_IF_NOT_FINALIZED() ThrowIfNotFinalized(__func__)
 
+using geometry::CollisionFilterDeclaration;
 using geometry::ContactSurface;
 using geometry::FrameId;
 using geometry::FramePoseVector;
@@ -320,6 +321,13 @@ void MultibodyPlant<T>::set_contact_model(ContactModel model) {
 template <typename T>
 ContactModel MultibodyPlant<T>::get_contact_model() const {
   return contact_model_;
+}
+
+template <typename T>
+void MultibodyPlant<T>::set_low_resolution_contact_surface(
+    bool use_low_resolution) {
+  DRAKE_MBP_THROW_IF_FINALIZED();
+  use_low_resolution_contact_surface_ = use_low_resolution;
 }
 
 template <typename T>
@@ -786,6 +794,12 @@ struct MultibodyPlant<T>::SceneGraphStub {
     }
   };
 
+  struct StubCollisionFilterManager {
+    void Apply(const geometry::CollisionFilterDeclaration&) {
+      return;
+    }
+  };
+
   static void Throw(const char* operation_name) {
     throw std::logic_error(fmt::format(
         "Cannot {} on a SceneGraph<symbolic::Expression>", operation_name));
@@ -800,14 +814,16 @@ struct MultibodyPlant<T>::SceneGraphStub {
   Ret Name(Args...) const { Throw(#Name); return Ret(); }
 
   DRAKE_STUB(void, AssignRole)
-  DRAKE_STUB(void, ExcludeCollisionsBetween)
-  DRAKE_STUB(void, ExcludeCollisionsWithin)
   DRAKE_STUB(FrameId, RegisterFrame)
   DRAKE_STUB(GeometryId, RegisterGeometry)
   DRAKE_STUB(SourceId, RegisterSource)
   const StubSceneGraphInspector model_inspector() const {
     Throw("model_inspector");
     return StubSceneGraphInspector();
+  }
+  StubCollisionFilterManager collision_filter_manager() {
+    Throw("collision_filter_manager");
+    return StubCollisionFilterManager();
   }
 
 #undef DRAKE_STUB
@@ -850,16 +866,18 @@ void MultibodyPlant<T>::FilterAdjacentBodies() {
     std::optional<FrameId> parent_id = GetBodyFrameIdIfExists(parent.index());
 
     if (child_id && parent_id) {
-      member_scene_graph().ExcludeCollisionsBetween(
+      member_scene_graph().collision_filter_manager().Apply(
+        CollisionFilterDeclaration().ExcludeBetween(
           geometry::GeometrySet(*child_id),
-          geometry::GeometrySet(*parent_id));
+          geometry::GeometrySet(*parent_id)));
     }
   }
   // We must explicitly exclude collisions between all geometries registered
   // against the world.
   // TODO(eric.cousineau): Do this in a better fashion (#11117).
   auto g_world = CollectRegisteredGeometries(GetBodiesWeldedTo(world_body()));
-  member_scene_graph().ExcludeCollisionsWithin(g_world);
+  member_scene_graph().collision_filter_manager().Apply(
+      CollisionFilterDeclaration().ExcludeWithin(g_world));
 }
 
 template <typename T>
@@ -873,8 +891,12 @@ void MultibodyPlant<T>::ExcludeCollisionsWithVisualGeometry() {
   for (const auto& body_geometries : collision_geometries_) {
     collision.Add(body_geometries);
   }
-  member_scene_graph().ExcludeCollisionsWithin(visual);
-  member_scene_graph().ExcludeCollisionsBetween(visual, collision);
+  // clang-format off
+  member_scene_graph().collision_filter_manager().Apply(
+      CollisionFilterDeclaration()
+          .ExcludeWithin(visual)
+          .ExcludeBetween(visual, collision));
+  // clang-format on
 }
 
 template <typename T>
@@ -887,15 +909,17 @@ void MultibodyPlant<T>::ExcludeCollisionGeometriesWithCollisionFilterGroupPair(
   DRAKE_DEMAND(geometry_source_is_registered());
 
   if (collision_filter_group_a.first == collision_filter_group_b.first) {
-    member_scene_graph().ExcludeCollisionsWithin(
-        collision_filter_group_a.second);
+    member_scene_graph().collision_filter_manager().Apply(
+        CollisionFilterDeclaration().ExcludeWithin(
+            collision_filter_group_a.second));
   } else {
-    member_scene_graph().ExcludeCollisionsBetween(
-        collision_filter_group_a.second, collision_filter_group_b.second);
+    member_scene_graph().collision_filter_manager().Apply(
+        CollisionFilterDeclaration().ExcludeBetween(
+            collision_filter_group_a.second, collision_filter_group_b.second));
   }
 }
 
-template<typename T>
+template <typename T>
 void MultibodyPlant<T>::CalcNormalAndTangentContactJacobians(
     const systems::Context<T>& context,
     const std::vector<internal::DiscreteContactPair<T>>& contact_pairs,
@@ -1460,6 +1484,29 @@ void MultibodyPlant<T>::CalcContactResultsDiscretePointPair(
     // Separation velocity in the normal direction.
     const T separation_velocity = vn(icontact);
 
+    // TODO(SeanCurtis-TRI) It is distinctly possible to report two contacts
+    //  between bodyA and bodyB such that sometimes it gets reported (A, B) and
+    //  sometimes (B, A). The example below illustrates a simple scenario in
+    //  which that would occur:
+    //    1. Geometry A (or B) has *multiple* collision geometries.
+    //    2. Assume that the collision geometries (called 1, 2, & 3) are added
+    //       in order as 1 added to A, 2 added to B, and 3 added to A.
+    //       Therefore collision geometries (1 and 3) would belong to A and 2
+    //       to B.
+    //    3. We generate contact pairs (1, 2), (2, 3) (i.e., *both* geometries
+    //       of A collide with the *single* geometry of B).
+    //    4. The pairs will be reported as (1, 2) and (2, 3) (and not (3, 2))
+    //       because SceneGraph guarantees that the geometry ids in the
+    //       point pair results will be ordered consistently.
+    //    5. So, for the first contact (1, 2), we'd get body pair (A, B). But
+    //       for the second contact (2, 3), we'd get body pair (B, A).
+    //  This means that any processing of contact results has to recognize that
+    //  interactions between bodies can be characterized as (A, B) or (B, A) and
+    //  to "combine" them, the associated quantities would have to be reversed.
+    //  It would be better if MBP made the guarantee that all body pairs (A, B)
+    //  are always presented as (A, B) and not (B, A). (Both in this contact as
+    //  well as hydro contact). This also applies to continuous point pairs.
+
     // Add pair info to the contact results.
     contact_results->AddContactInfo({bodyA_index, bodyB_index, f_Bc_W, p_WC,
                                      separation_velocity, slip, pair});
@@ -1853,11 +1900,15 @@ void MultibodyPlant<T>::CalcContactSurfaces(
     const drake::systems::Context<T>& context,
     std::vector<ContactSurface<T>>* contact_surfaces) const {
   this->ValidateContext(context);
-  DRAKE_DEMAND(contact_surfaces);
+  DRAKE_DEMAND(contact_surfaces != nullptr);
 
   const auto& query_object = EvalGeometryQueryInput(context);
 
-  *contact_surfaces = query_object.ComputeContactSurfaces();
+  if (is_discrete() && use_low_resolution_contact_surface_) {
+    *contact_surfaces = query_object.ComputePolygonalContactSurfaces();
+  } else {
+    *contact_surfaces = query_object.ComputeContactSurfaces();
+  }
 }
 
 template <>
@@ -1880,8 +1931,13 @@ void MultibodyPlant<T>::CalcHydroelasticWithFallback(
     data->contact_surfaces.clear();
     data->point_pairs.clear();
 
-    query_object.ComputeContactSurfacesWithFallback(&data->contact_surfaces,
-                                                    &data->point_pairs);
+    if (is_discrete() && use_low_resolution_contact_surface_) {
+      query_object.ComputePolygonalContactSurfacesWithFallback(
+          &data->contact_surfaces, &data->point_pairs);
+    } else {
+      query_object.ComputeContactSurfacesWithFallback(&data->contact_surfaces,
+                                                      &data->point_pairs);
+    }
   }
 }
 
@@ -2364,7 +2420,7 @@ template <typename T>
 void MultibodyPlant<T>::CalcGeneralizedContactForcesContinuous(
     const Context<T>& context, VectorX<T>* tau_contact) const {
   this->ValidateContext(context);
-  DRAKE_DEMAND(tau_contact);
+  DRAKE_DEMAND(tau_contact != nullptr);
   DRAKE_DEMAND(tau_contact->size() == num_velocities());
   DRAKE_DEMAND(!is_discrete());
   const int nv = this->num_velocities();
@@ -2405,7 +2461,7 @@ void MultibodyPlant<T>::CalcSpatialContactForcesContinuous(
       const drake::systems::Context<T>& context,
       std::vector<SpatialForce<T>>* F_BBo_W_array) const {
   this->ValidateContext(context);
-  DRAKE_DEMAND(F_BBo_W_array);
+  DRAKE_DEMAND(F_BBo_W_array != nullptr);
   DRAKE_DEMAND(static_cast<int>(F_BBo_W_array->size()) == num_bodies());
   DRAKE_DEMAND(!is_discrete());
 
@@ -2565,7 +2621,7 @@ void MultibodyPlant<T>::DoCalcDiscreteVariableUpdates(
 
   VectorX<T> x_next(this->num_multibody_states());
   x_next << q_next, v_next;
-  updates->get_mutable_vector(0).SetFromVector(x_next);
+  updates->set_value(0, x_next);
 }
 
 template<typename T>
@@ -2593,16 +2649,17 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
     instance_actuation_ports_[model_instance_index] =
         this->DeclareVectorInputPort(
                 GetModelInstanceName(model_instance_index) + "_actuation",
-                systems::BasicVector<T>(instance_num_dofs))
+                instance_num_dofs)
             .get_index();
   }
 
   if (num_actuated_instances == 1) actuated_instance_ = last_actuated_instance;
 
   // Declare the generalized force input port.
-  applied_generalized_force_input_port_ = this->DeclareVectorInputPort(
-      "applied_generalized_force",
-      systems::BasicVector<T>(num_velocities())).get_index();
+  applied_generalized_force_input_port_ =
+      this->DeclareVectorInputPort("applied_generalized_force",
+                                   num_velocities())
+          .get_index();
 
   // Declare applied spatial force input force port.
   applied_spatial_force_input_port_ = this->DeclareAbstractInputPort(
@@ -2613,8 +2670,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
   // TODO(sherm1) Rename this port to just "state" when #12214 is resolved so
   //              we can deprecate the old port name.
   state_output_port_ =
-      this->DeclareVectorOutputPort("continuous_state",
-                                    BasicVector<T>(num_multibody_states()),
+      this->DeclareVectorOutputPort("continuous_state", num_multibody_states(),
                                     &MultibodyPlant::CopyMultibodyStateOut,
                                     {this->all_state_ticket()})
           .get_index();
@@ -2654,7 +2710,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
   // vdot (length is nv).
   generalized_acceleration_output_port_ =
       this->DeclareVectorOutputPort(
-              "generalized_acceleration", BasicVector<T>(num_velocities()),
+              "generalized_acceleration", num_velocities(),
               [this](const systems::Context<T>& context,
                      systems::BasicVector<T>* result) {
                 result->SetFromVector(
@@ -2677,11 +2733,9 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
     //              so we can deprecate the old port names.
     instance_state_output_ports_[model_instance_index] =
         this->DeclareVectorOutputPort(
-                instance_name + "_continuous_state",
-                BasicVector<T>(instance_num_states),
-                [this, model_instance_index](
-                    const systems::Context<T>& context,
-                    systems::BasicVector<T>* result) {
+                instance_name + "_continuous_state", instance_num_states,
+                [this, model_instance_index](const systems::Context<T>& context,
+                                             systems::BasicVector<T>* result) {
                   this->CopyMultibodyStateOut(model_instance_index, context,
                                                result);
                 },
@@ -2693,7 +2747,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
     instance_generalized_acceleration_output_ports_[model_instance_index] =
         this->DeclareVectorOutputPort(
                 instance_name + "_generalized_acceleration",
-                BasicVector<T>(instance_num_velocities),
+                instance_num_velocities,
                 [this, model_instance_index](const systems::Context<T>& context,
                                              systems::BasicVector<T>* result) {
                   const auto& vdot =
@@ -2727,7 +2781,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
           this->DeclareVectorOutputPort(
                   GetModelInstanceName(model_instance_index) +
                       "_generalized_contact_forces",
-                  BasicVector<T>(instance_num_velocities), calc,
+                  instance_num_velocities, calc,
                   {contact_solver_results_cache_entry.ticket()})
               .get_index();
     } else {
@@ -2745,7 +2799,7 @@ void MultibodyPlant<T>::DeclareStateCacheAndPorts() {
           this->DeclareVectorOutputPort(
                   GetModelInstanceName(model_instance_index) +
                       "_generalized_contact_forces",
-                  BasicVector<T>(instance_num_velocities), calc,
+                  instance_num_velocities, calc,
                   {generalized_contact_forces_continuous_cache_entry.ticket()})
               .get_index();
     }

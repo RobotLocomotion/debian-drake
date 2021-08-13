@@ -24,6 +24,7 @@ drake_cc_package_library(
     deps = [
         ":autodiff",
         ":autodiffxd_make_coherent",
+        ":bit_cast",
         ":cond",
         ":copyable_unique_ptr",
         ":default_scalars",
@@ -84,6 +85,11 @@ drake_cc_library(
         "@fmt",
         "@spdlog",
     ],
+)
+
+drake_cc_library(
+    name = "bit_cast",
+    hdrs = ["bit_cast.h"],
 )
 
 # Specific traits and operators that are relevant to all ScalarTypes.
@@ -229,6 +235,7 @@ drake_cc_library(
         "symbolic.h",
     ],
     deps = [
+        ":bit_cast",
         ":cond",
         ":drake_bool",
         ":dummy_value",
@@ -641,6 +648,13 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "bit_cast_test",
+    deps = [
+        ":bit_cast",
+    ],
+)
+
+drake_cc_googletest(
     name = "drake_bool_test",
     deps = [
         ":drake_bool",
@@ -857,6 +871,7 @@ drake_cc_googletest(
     deps = [
         ":essential",
         ":extract_double",
+        "//common/test_utilities:eigen_matrix_compare",
     ],
 )
 
@@ -1077,6 +1092,7 @@ drake_cc_googletest(
         ":essential",
         ":polynomial",
         ":symbolic",
+        "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:is_memcpy_movable",
         "//common/test_utilities:symbolic_test_util",
     ],

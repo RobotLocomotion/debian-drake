@@ -906,7 +906,13 @@ class System : public SystemBase {
   // TODO(sherm1) Make this an InputPortIndex.
   /** Returns the typed input port at index @p port_index. */
   const InputPort<T>& get_input_port(int port_index) const {
-    return dynamic_cast<const InputPort<T>&>(
+    // Profiling revealed that it is too expensive to do a dynamic_cast here.
+    // A static_cast is safe as long as GetInputPortBaseOrThrow always returns
+    // a satisfactory type. As of this writing, it only ever returns values
+    // supplied via SystemBase::AddInputPort, which atop its implementation
+    // has a check that port.get_system_interface() matches `this` which is a
+    // System<T>, so we are safe.
+    return static_cast<const InputPort<T>&>(
         this->GetInputPortBaseOrThrow(__func__, port_index));
   }
 
@@ -941,7 +947,13 @@ class System : public SystemBase {
   // TODO(sherm1) Make this an OutputPortIndex.
   /** Returns the typed output port at index @p port_index. */
   const OutputPort<T>& get_output_port(int port_index) const {
-    return dynamic_cast<const OutputPort<T>&>(
+    // Profiling revealed that it is too expensive to do a dynamic_cast here.
+    // A static_cast is safe as long as GetInputPortBaseOrThrow always returns
+    // a satisfactory type. As of this writing, it only ever returns values
+    // supplied via SystemBase::AddInputPort, which atop its implementation
+    // has a check that port.get_system_interface() matches `this` which is a
+    // System<T>, so we are safe.
+    return static_cast<const OutputPort<T>&>(
         this->GetOutputPortBaseOrThrow(__func__, port_index));
   }
 
@@ -1131,7 +1143,10 @@ class System : public SystemBase {
   in @p other_context, as evaluated by @p other_system.
   @throws std::exception unless `other_context` and `target_context` both
   have the same shape as this System, and the `other_system`. Ignores
-  disconnected inputs. */
+  disconnected inputs.
+  @throws std::exception if `this` system's scalar type T != double and
+  `other_system` has any abstract input ports whose contained type depends on
+  scalar type. */
   void FixInputPortsFrom(const System<double>& other_system,
                          const Context<double>& other_context,
                          Context<T>* target_context) const;
@@ -1445,7 +1460,7 @@ class System : public SystemBase {
 
   @note The public method has already verified that `proposed_derivatives`
   is compatible with this System and that `residual` is non-null and of the
-  the declared size (as reported by
+  declared size (as reported by
   SystemBase::implicit_time_derivatives_residual_size()). You do not have to
   check those two conditions in your implementation, but if you have additional
   restrictions you should validate that they are also met. */
@@ -1624,37 +1639,37 @@ class System : public SystemBase {
   }
 
   EventCollection<PublishEvent<T>>& get_mutable_forced_publish_events() {
-    DRAKE_DEMAND(forced_publish_events_.get());
+    DRAKE_DEMAND(forced_publish_events_ != nullptr);
     return *forced_publish_events_;
   }
 
   EventCollection<DiscreteUpdateEvent<T>>&
   get_mutable_forced_discrete_update_events() {
-    DRAKE_DEMAND(forced_discrete_update_events_.get());
+    DRAKE_DEMAND(forced_discrete_update_events_ != nullptr);
     return *forced_discrete_update_events_;
   }
 
   EventCollection<UnrestrictedUpdateEvent<T>>&
   get_mutable_forced_unrestricted_update_events() {
-    DRAKE_DEMAND(forced_unrestricted_update_events_.get());
+    DRAKE_DEMAND(forced_unrestricted_update_events_ != nullptr);
     return *forced_unrestricted_update_events_;
   }
 
   const EventCollection<PublishEvent<T>>&
   get_forced_publish_events() const {
-    DRAKE_DEMAND(forced_publish_events_.get());
+    DRAKE_DEMAND(forced_publish_events_ != nullptr);
     return *forced_publish_events_;
   }
 
   const EventCollection<DiscreteUpdateEvent<T>>&
   get_forced_discrete_update_events() const {
-    DRAKE_DEMAND(forced_discrete_update_events_.get());
+    DRAKE_DEMAND(forced_discrete_update_events_ != nullptr);
     return *forced_discrete_update_events_;
   }
 
   const EventCollection<UnrestrictedUpdateEvent<T>>&
   get_forced_unrestricted_update_events() const {
-    DRAKE_DEMAND(forced_unrestricted_update_events_.get());
+    DRAKE_DEMAND(forced_unrestricted_update_events_ != nullptr);
     return *forced_unrestricted_update_events_;
   }
 
@@ -1676,25 +1691,6 @@ class System : public SystemBase {
   /** Returns the SystemScalarConverter for `this` system. */
   SystemScalarConverter& get_mutable_system_scalar_converter() {
     return system_scalar_converter_;
-  }
-
-  /** Checks whether the given object was created for this system.
-  @note This method is sufficiently fast for performance sensitive code. */
-  template <template <typename> class Clazz>
-  void ValidateCreatedForThisSystem(const Clazz<T>* object) const {
-    DRAKE_THROW_UNLESS(object != nullptr);
-    if (!object->get_system_id().is_valid()) {
-      throw std::logic_error(fmt::format(
-          "{} lacks a system_id so was not created for {} system {}",
-          NiceTypeName::Get<Clazz<T>>(), this->GetSystemType(),
-          this->GetSystemPathname()));
-    }
-    if (object->get_system_id() != this->get_system_id()) {
-      throw std::logic_error(fmt::format(
-          "{} was not created for {} system {}",
-          NiceTypeName::Get<Clazz<T>>(), this->GetSystemType(),
-          this->GetSystemPathname()));
-    }
   }
 
   template <template <typename> class Clazz>

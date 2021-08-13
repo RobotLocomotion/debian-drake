@@ -15,6 +15,7 @@ drake_cc_package_library(
     visibility = ["//visibility:public"],
     deps = [
         ":convex_set",
+        ":graph_of_convex_sets",
         ":iris",
     ],
 )
@@ -25,6 +26,7 @@ drake_cc_library(
         "convex_set.cc",
         "hpolyhedron.cc",
         "hyperellipsoid.cc",
+        "minkowski_sum.cc",
         "point.cc",
         "vpolytope.cc",
     ],
@@ -32,6 +34,7 @@ drake_cc_library(
         "convex_set.h",
         "hpolyhedron.h",
         "hyperellipsoid.h",
+        "minkowski_sum.h",
         "point.h",
         "vpolytope.h",
     ],
@@ -43,12 +46,27 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "graph_of_convex_sets",
+    srcs = ["graph_of_convex_sets.cc"],
+    hdrs = ["graph_of_convex_sets.h"],
+    deps = [
+        ":convex_set",
+        "//common:symbolic",
+        "//solvers:create_cost",
+        "//solvers:mathematical_program_result",
+    ],
+)
+
+drake_cc_library(
     name = "iris",
     srcs = ["iris.cc"],
     hdrs = ["iris.h"],
     deps = [
         ":convex_set",
         "//geometry:scene_graph",
+        "//multibody/plant",
+        "//solvers:ipopt_solver",
+        "//solvers:snopt_solver",
     ],
 )
 
@@ -69,6 +87,15 @@ drake_cc_googletest(
     deps = [
         ":convex_set",
         "//common/test_utilities:eigen_matrix_compare",
+    ],
+)
+
+drake_cc_googletest(
+    name = "graph_of_convex_sets_test",
+    deps = [
+        ":graph_of_convex_sets",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
@@ -94,6 +121,17 @@ drake_cc_googletest(
     name = "iris_test",
     deps = [
         ":iris",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//multibody/parsing:parser",
+        "//systems/framework:diagram_builder",
+    ],
+)
+
+drake_cc_googletest(
+    name = "minkowski_sum_test",
+    deps = [
+        ":convex_set",
+        ":test_utilities",
         "//common/test_utilities:eigen_matrix_compare",
     ],
 )

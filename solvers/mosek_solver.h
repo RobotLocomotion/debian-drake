@@ -52,6 +52,18 @@ struct MosekSolverDetails {
  * subsequent iterations.) If the specified integer solution is infeasible or
  * incomplete, MOSEK will simply ignore it. For more details, check
  * https://docs.mosek.com/9.2/capi/tutorial-mio-shared.html?highlight=initial
+ *
+ * Mosek supports many solver parameters. You can refer to the full list of
+ * parameters in
+ * https://docs.mosek.com/9.2/capi/param-groups.html#doc-param-groups. On top of
+ * these parameters, we also provide the following additional parameters
+ * 1. "writedata", set to a file name so that Mosek solver will write the
+ *    optimization model to this file. check
+ *    https://docs.mosek.com/9.2/capi/solver-io.html#saving-a-problem-to-a-file
+ *    for more details. The supported file extensions are listed in
+ *    https://docs.mosek.com/9.2/capi/supported-file-formats.html#doc-shared-file-formats.
+ *    Set this parameter to "" if you don't want to write to a file. Default is
+ *    not to write to a file.
  */
 class MosekSolver final : public SolverBase {
  public:
@@ -71,6 +83,9 @@ class MosekSolver final : public SolverBase {
    * set @p log_file to the name of that file. If the user wants to output the
    * logging to the console, then set log_file to empty string.
    */
+  DRAKE_DEPRECATED("2021-11-01",
+                   "Please set CommonSolverOption::kPrintFileName or "
+                   "CommonSolverOption::kPrintToConsole in SolverOptions")
   void set_stream_logging(bool flag, const std::string& log_file) {
     stream_logging_ = flag;
     log_file_ = log_file;

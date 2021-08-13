@@ -726,7 +726,8 @@ void GeometryState<T>::AssignRole(SourceId source_id, GeometryId geometry_id,
                                                       ids_for_filtering),
           [this](const GeometrySet& set) {
             return this->CollectIds(set, Role::kProximity);
-          });
+          },
+          true /* is_permanent */);
     } break;
     case RoleAssign::kReplace:
       // Give the engine a chance to compare properties before and after.
@@ -894,27 +895,6 @@ int GeometryState<T>::RemoveFromRenderer(const std::string& renderer_name,
 }
 
 template <typename T>
-void GeometryState<T>::ExcludeCollisionsWithin(const GeometrySet& set) {
-  geometry_version_.modify_proximity();
-  geometry_engine_->collision_filter().Apply(
-      CollisionFilterDeclaration().ExcludeWithin(set),
-      [this](const GeometrySet& set_in) {
-        return this->CollectIds(set_in, Role::kProximity);
-      });
-}
-
-template <typename T>
-void GeometryState<T>::ExcludeCollisionsBetween(const GeometrySet& setA,
-                                                const GeometrySet& setB) {
-  geometry_version_.modify_proximity();
-  geometry_engine_->collision_filter().Apply(
-      CollisionFilterDeclaration().ExcludeBetween(setA, setB),
-      [this](const GeometrySet& set_in) {
-        return this->CollectIds(set_in, Role::kProximity);
-      });
-}
-
-template <typename T>
 void GeometryState<T>::AddRenderer(
     std::string name, std::unique_ptr<render::RenderEngine> renderer) {
   if (render_engines_.count(name) > 0) {
@@ -926,13 +906,22 @@ void GeometryState<T>::AddRenderer(
   bool accepted = false;
   for (auto& id_geo_pair : geometries_) {
     InternalGeometry& geometry = id_geo_pair.second;
+    // To add this geometry to the renderer, it must:
+    //   1. Have perception role and
+    //   2. Be an acceptable renderer -- it is acceptable if the geometry hasn't
+    //      declared *any* acceptable renderers or if this renderer's name has
+    //      been explicitly included in its acceptable set.
     if (geometry.has_perception_role()) {
-      const GeometryId id = id_geo_pair.first;
       const PerceptionProperties* properties = geometry.perception_properties();
       DRAKE_DEMAND(properties != nullptr);
-      accepted |= render_engine->RegisterVisual(
-                     id, geometry.shape(), *properties,
-                     RigidTransformd(geometry.X_FG()), geometry.is_dynamic());
+      auto accepting_renderers = properties->GetPropertyOrDefault(
+          "renderer", "accepting", set<string>{});
+      if (accepting_renderers.empty() || accepting_renderers.count(name) > 0) {
+        const GeometryId id = id_geo_pair.first;
+        accepted |= render_engine->RegisterVisual(
+            id, geometry.shape(), *properties, RigidTransformd(geometry.X_FG()),
+            geometry.is_dynamic());
+      }
     }
   }
   // Increment version number if any geometry is registered to the new

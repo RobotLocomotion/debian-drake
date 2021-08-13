@@ -94,7 +94,6 @@ from pydrake.math import (
 )
 from pydrake.systems.analysis import Simulator_
 from pydrake.systems.framework import (
-    BasicVector_,
     DiagramBuilder_,
     System_,
     LeafSystem_,
@@ -1085,10 +1084,8 @@ class TestPlant(unittest.TestCase):
                     "spatial_forces_vector",
                     lambda: forces_cls(),
                     self.DoCalcAbstractOutput)
-                self.DeclareVectorOutputPort(
-                    "generalized_forces",
-                    BasicVector_[T](self.nv),
-                    self.DoCalcVectorOutput)
+                self.DeclareVectorOutputPort("generalized_forces", self.nv,
+                                             self.DoCalcVectorOutput)
 
             def _construct_copy(self, other, converter=None):
                 Impl._construct(
@@ -1802,6 +1799,7 @@ class TestPlant(unittest.TestCase):
         plant.SetPositions(context, [0.1, 0.2])
 
         M = plant.CalcMassMatrixViaInverseDynamics(context)
+        M = plant.CalcMassMatrix(context)
         Cv = plant.CalcBiasTerm(context)
 
         self.assertTrue(M.shape == (2, 2))
