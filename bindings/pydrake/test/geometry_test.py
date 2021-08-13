@@ -65,8 +65,10 @@ class TestGeometry(unittest.TestCase):
                                           name="sphere3"))
         self.assertIsInstance(
             scene_graph.get_source_pose_port(global_source), InputPort)
-        self.assertIsInstance(
-            scene_graph.get_pose_bundle_output_port(), OutputPort)
+
+        with catch_drake_warnings(expected_count=1):
+            self.assertIsInstance(
+                scene_graph.get_pose_bundle_output_port(), OutputPort)
         self.assertIsInstance(
             scene_graph.get_query_output_port(), OutputPort)
 
@@ -81,10 +83,15 @@ class TestGeometry(unittest.TestCase):
         inspector = scene_graph.model_inspector()
         self.assertEqual(inspector.num_sources(), 2)
         self.assertEqual(inspector.num_frames(), 3)
-        self.assertEqual(len(inspector.all_frame_ids()), 3)
+        with catch_drake_warnings(expected_count=3):
+            self.assertEqual(len(inspector.all_frame_ids()), 3)
+            self.assertTrue(inspector.world_frame_id()
+                            in inspector.all_frame_ids())
+            self.assertTrue(global_frame in inspector.all_frame_ids())
+        self.assertEqual(len(inspector.GetAllFrameIds()), 3)
         self.assertTrue(inspector.world_frame_id()
-                        in inspector.all_frame_ids())
-        self.assertTrue(global_frame in inspector.all_frame_ids())
+                        in inspector.GetAllFrameIds())
+        self.assertTrue(global_frame in inspector.GetAllFrameIds())
         self.assertIsInstance(inspector.world_frame_id(), mut.FrameId)
         self.assertEqual(inspector.num_geometries(), 3)
         self.assertEqual(len(inspector.GetAllGeometryIds()), 3)
@@ -757,10 +764,41 @@ class TestGeometry(unittest.TestCase):
         sg_context = sg.CreateDefaultContext()
         geometries = mut.GeometrySet()
 
-        sg.ExcludeCollisionsBetween(geometries, geometries)
-        sg.ExcludeCollisionsBetween(sg_context, geometries, geometries)
-        sg.ExcludeCollisionsWithin(geometries)
-        sg.ExcludeCollisionsWithin(sg_context, geometries)
+        # Mutate SceneGraph model
+        dut = sg.collision_filter_manager()
+        dut.Apply(
+            mut.CollisionFilterDeclaration().ExcludeBetween(
+                geometries, geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().ExcludeWithin(geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().AllowBetween(
+                set_A=geometries, set_B=geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().AllowWithin(
+                geometry_set=geometries))
+
+        # Mutate context data
+        dut = sg.collision_filter_manager(sg_context)
+        dut.Apply(
+            mut.CollisionFilterDeclaration().ExcludeBetween(
+                geometries, geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().ExcludeWithin(geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().AllowBetween(
+                set_A=geometries, set_B=geometries))
+        dut.Apply(
+            mut.CollisionFilterDeclaration().AllowWithin(
+                geometry_set=geometries))
+
+        # TODO(2021-11-01) Remove these with deprecation resolution.
+        # Legacy API
+        with catch_drake_warnings(expected_count=4):
+            sg.ExcludeCollisionsBetween(geometries, geometries)
+            sg.ExcludeCollisionsBetween(sg_context, geometries, geometries)
+            sg.ExcludeCollisionsWithin(geometries)
+            sg.ExcludeCollisionsWithin(sg_context, geometries)
 
     @numpy_compare.check_nonsymbolic_types
     def test_value_instantiations(self, T):
@@ -906,10 +944,13 @@ class TestGeometry(unittest.TestCase):
         t = prog.NewContinuousVariables(1, "t")
 
         # Test Point.
-        p = [11.1, 12.2, 13.3]
+        p = np.array([11.1, 12.2, 13.3])
         point = mut.optimization.Point(p)
         self.assertEqual(point.ambient_dimension(), 3)
         np.testing.assert_array_equal(point.x(), p)
+        point.set_x(x=2*p)
+        np.testing.assert_array_equal(point.x(), 2*p)
+        point.set_x(x=p)
 
         # Test HPolyhedron.
         hpoly = mut.optimization.HPolyhedron(A=A, b=b)
@@ -958,6 +999,15 @@ class TestGeometry(unittest.TestCase):
         np.testing.assert_array_equal(e_ball3.A(), A)
         np.testing.assert_array_equal(e_ball3.center(), [0, 0, 0])
 
+        # Test MinkowskiSum.
+        sum = mut.optimization.MinkowskiSum(setA=point, setB=hpoly)
+        self.assertEqual(sum.ambient_dimension(), 3)
+        self.assertEqual(sum.num_terms(), 2)
+        sum2 = mut.optimization.MinkowskiSum(sets=[point, hpoly])
+        self.assertEqual(sum2.ambient_dimension(), 3)
+        self.assertEqual(sum2.num_terms(), 2)
+        self.assertIsInstance(sum2.term(0), mut.optimization.Point)
+
         # Test VPolytope.
         vertices = np.array([[0.0, 1.0, 2.0], [3.0, 7.0, 5.0]])
         vpoly = mut.optimization.VPolytope(vertices=vertices)
@@ -990,6 +1040,12 @@ class TestGeometry(unittest.TestCase):
             source_id=source_id, frame_id=frame_id,
             geometry=mut.GeometryInstance(X_PG=RigidTransform(),
                                           shape=mut.Sphere(1.), name="sphere"))
+        capsule_geometry_id = scene_graph.RegisterGeometry(
+            source_id=source_id,
+            frame_id=frame_id,
+            geometry=mut.GeometryInstance(X_PG=RigidTransform(),
+                                          shape=mut.Capsule(1., 1.0),
+                                          name="capsule"))
         context = scene_graph.CreateDefaultContext()
         pose_vector = mut.FramePoseVector()
         pose_vector.set_value(frame_id, RigidTransform())
@@ -1004,6 +1060,10 @@ class TestGeometry(unittest.TestCase):
             query_object=query_object, geometry_id=sphere_geometry_id,
             reference_frame=scene_graph.world_frame_id())
         self.assertEqual(E.ambient_dimension(), 3)
+        S = mut.optimization.MinkowskiSum(
+            query_object=query_object, geometry_id=capsule_geometry_id,
+            reference_frame=scene_graph.world_frame_id())
+        self.assertEqual(S.ambient_dimension(), 3)
         P = mut.optimization.Point(
             query_object=query_object, geometry_id=sphere_geometry_id,
             reference_frame=scene_graph.world_frame_id(),
@@ -1038,21 +1098,3 @@ class TestGeometry(unittest.TestCase):
             domain=mut.optimization.HPolyhedron.MakeBox(
                 lb=[-5, -5, -5], ub=[5, 5, 5]), options=options)
         self.assertIsInstance(region, mut.optimization.HPolyhedron)
-
-    def test_deprecated_struct_member(self):
-        """Tests successful deprecation of struct member"""
-        with catch_drake_warnings(expected_count=1):
-            # Initializing by referencing the deprecated field warns.
-            data = mut.SignedDistancePair(is_nhat_BA_W_unique=False)
-
-        data = mut.SignedDistancePair()
-        with catch_drake_warnings(expected_count=2):
-            # Setting the deprecated field warns.
-            data.is_nhat_BA_W_unique = False
-            _ = data.is_nhat_BA_W_unique
-
-        # Specifying all other members in constructor is fine.
-        data = mut.SignedDistancePair(id_A=mut.GeometryId.get_new_id(),
-                                      id_B=mut.GeometryId.get_new_id(),
-                                      p_ACa=[0, 0, 1], p_BCb=[1, 0, 0],
-                                      distance=13, nhat_BA_W=[0, 1, 0])

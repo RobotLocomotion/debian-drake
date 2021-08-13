@@ -325,29 +325,42 @@ const SceneGraphInspector<T>& SceneGraph<T>::model_inspector() const {
 }
 
 template <typename T>
+CollisionFilterManager SceneGraph<T>::collision_filter_manager() {
+  return model_.collision_filter_manager();;
+}
+
+template <typename T>
+CollisionFilterManager SceneGraph<T>::collision_filter_manager(
+    Context<T>* context) const {
+  return mutable_geometry_state(context).collision_filter_manager();
+}
+
+template <typename T>
 void SceneGraph<T>::ExcludeCollisionsWithin(const GeometrySet& geometry_set) {
-  model_.ExcludeCollisionsWithin(geometry_set);
+  collision_filter_manager().Apply(
+      CollisionFilterDeclaration().ExcludeWithin(geometry_set));
 }
 
 template <typename T>
 void SceneGraph<T>::ExcludeCollisionsWithin(
     Context<T>* context, const GeometrySet& geometry_set) const {
-  auto& g_state = mutable_geometry_state(context);
-  g_state.ExcludeCollisionsWithin(geometry_set);
+  collision_filter_manager(context).Apply(
+      CollisionFilterDeclaration().ExcludeWithin(geometry_set));
 }
 
 template <typename T>
 void SceneGraph<T>::ExcludeCollisionsBetween(const GeometrySet& setA,
                                              const GeometrySet& setB) {
-  model_.ExcludeCollisionsBetween(setA, setB);
+  collision_filter_manager().Apply(
+      CollisionFilterDeclaration().ExcludeBetween(setA, setB));
 }
 
 template <typename T>
 void SceneGraph<T>::ExcludeCollisionsBetween(Context<T>* context,
                                              const GeometrySet& setA,
                                              const GeometrySet& setB) const {
-  auto& g_state = mutable_geometry_state(context);
-  g_state.ExcludeCollisionsBetween(setA, setB);
+  collision_filter_manager(context).Apply(
+      CollisionFilterDeclaration().ExcludeBetween(setA, setB));
 }
 
 template <typename T>
@@ -387,9 +400,15 @@ void SceneGraph<T>::CalcQueryObject(const Context<T>& context,
   output->set(&context, this);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 template <typename T>
 void SceneGraph<T>::CalcPoseBundle(const Context<T>& context,
                                    PoseBundle<T>* output) const {
+  static const logging::Warn log_once(
+      "Do not use SceneGraph's PoseBundle-valued output port. It is deprecated "
+      "for removal after 2021-12-01. Instead use the QueryObject-valued port "
+      "and directly query for any information you need.");
   // Note: This functionality can potentially lead to strange visualization
   // artifacts. No invariant is maintained on what poses are being reported.
   // That means, when computing the output, *any* frame with illustration
@@ -416,6 +435,7 @@ void SceneGraph<T>::CalcPoseBundle(const Context<T>& context,
     // TODO(SeanCurtis-TRI): Handle velocity.
   }
 }
+#pragma GCC diagnostic pop
 
 template <typename T>
 std::vector<FrameId> SceneGraph<T>::GetDynamicFrames(

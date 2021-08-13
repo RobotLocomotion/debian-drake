@@ -9,12 +9,14 @@
 
 #include "drake/bindings/pydrake/autodiff_types_pybind.h"
 #include "drake/bindings/pydrake/common/cpp_param_pybind.h"
+#include "drake/bindings/pydrake/common/cpp_template_pybind.h"
 #include "drake/bindings/pydrake/common/deprecation_pybind.h"
 #include "drake/bindings/pydrake/documentation_pybind.h"
 #include "drake/bindings/pydrake/pydrake_pybind.h"
 #include "drake/bindings/pydrake/symbolic_types_pybind.h"
 #include "drake/solvers/choose_best_solver.h"
 #include "drake/solvers/common_solver_option.h"
+#include "drake/solvers/get_program_type.h"
 #include "drake/solvers/mathematical_program.h"
 #include "drake/solvers/solve.h"
 #include "drake/solvers/solver_type_converter.h"
@@ -45,6 +47,7 @@ using solvers::MathematicalProgramResult;
 using solvers::MatrixXDecisionVariable;
 using solvers::MatrixXIndeterminate;
 using solvers::PositiveSemidefiniteConstraint;
+using solvers::ProgramType;
 using solvers::QuadraticConstraint;
 using solvers::QuadraticCost;
 using solvers::RotatedLorentzConeConstraint;
@@ -54,7 +57,6 @@ using solvers::SolverInterface;
 using solvers::SolverOptions;
 using solvers::SolverType;
 using solvers::SolverTypeConverter;
-using solvers::VariableRefList;
 using solvers::VectorXDecisionVariable;
 using solvers::VectorXIndeterminate;
 using solvers::VisualizationCallback;
@@ -83,11 +85,12 @@ void SetSolverOptionBySolverType(MathematicalProgram* self,
  * @param name Name of the Cost / Constraint class.
  */
 template <typename C>
-auto RegisterBinding(py::handle* scope, const string& name) {
+auto RegisterBinding(py::handle* scope) {
   constexpr auto& cls_doc = pydrake_doc.drake.solvers.Binding;
   typedef Binding<C> B;
-  string pyname = "Binding_" + name;
+  const string pyname = TemporaryClassName<B>();
   py::class_<B> binding_cls(*scope, pyname.c_str());
+  AddTemplateClass(*scope, "Binding", binding_cls, GetPyParam<C>());
   binding_cls  // BR
       .def("evaluator", &B::evaluator, cls_doc.evaluator.doc)
       .def("variables", &B::variables, cls_doc.variables.doc)
@@ -101,7 +104,24 @@ auto RegisterBinding(py::handle* scope, const string& name) {
   if (std::is_base_of_v<Constraint, C> && !std::is_same_v<C, Constraint>) {
     py::implicitly_convertible<B, Binding<Constraint>>();
   }
+  if (std::is_base_of_v<Cost, C> && !std::is_same_v<C, Cost>) {
+    py::implicitly_convertible<B, Binding<Cost>>();
+  }
   return binding_cls;
+}
+
+template <typename C, typename PyClass>
+void DefBindingCastConstructor(PyClass* cls) {
+  static_assert(std::is_same_v<Binding<C>, typename PyClass::type>,
+      "Bound type must be Binding<C>");
+  (*cls)  // BR
+      .def(py::init([](py::object binding) {
+        // Define a type-erased downcast to mirror the implicit
+        // "downcast-ability" of Binding<> types.
+        return std::make_unique<Binding<C>>(
+            binding.attr("evaluator")().cast<std::shared_ptr<C>>(),
+            binding.attr("variables")().cast<VectorXDecisionVariable>());
+      }));
 }
 
 enum class ArrayShapeType { Scalar, Vector };
@@ -295,20 +315,47 @@ class PySolverInterface : public py::wrapper<solvers::SolverInterface> {
         ExplainUnsatisfiedProgramAttributes, prog);
   }
 };
+
+class StubEvaluatorBase : public EvaluatorBase {
+ public:
+  StubEvaluatorBase() : EvaluatorBase(1, 1) {}
+
+  void DoEval(const Eigen::Ref<const Eigen::VectorXd>&,
+      Eigen::VectorXd*) const override {
+    throw std::runtime_error("Not implemented");
+  }
+
+  void DoEval(
+      const Eigen::Ref<const AutoDiffVecXd>&, AutoDiffVecXd*) const override {
+    throw std::runtime_error("Not implemented");
+  }
+
+  void DoEval(const Eigen::Ref<const VectorX<symbolic::Variable>>&,
+      VectorX<symbolic::Expression>*) const override {
+    throw std::runtime_error("Not implemented");
+  }
+};
+
+void DefTesting(py::module m) {
+  // To test binding casting.
+  py::class_<StubEvaluatorBase, EvaluatorBase,
+      std::shared_ptr<StubEvaluatorBase>>(m, "StubEvaluatorBase");
+  RegisterBinding<StubEvaluatorBase>(&m)  // BR
+      .def_static(
+          "Make", [](const Eigen::Ref<const VectorXDecisionVariable>& v) {
+            return Binding<StubEvaluatorBase>(
+                std::make_shared<StubEvaluatorBase>(), v);
+          });
+  m  // BR
+      .def("AcceptBindingEvaluatorBase", [](const Binding<EvaluatorBase>&) {})
+      .def("AcceptBindingCost", [](const Binding<Cost>&) {})
+      .def("AcceptBindingConstraint", [](const Binding<Constraint>&) {});
+}
+
 }  // namespace
 
-PYBIND11_MODULE(mathematicalprogram, m) {
-  m.doc() = R"""(
-Bindings for MathematicalProgram
-
-If you are formulating constraints using symbolic formulas, please review the
-top-level documentation for :py:mod:`pydrake.math`.
-)""";
+void BindSolverInterfaceAndFlags(py::module m) {
   constexpr auto& doc = pydrake_doc.drake.solvers;
-
-  py::module::import("pydrake.autodiffutils");
-  py::module::import("pydrake.symbolic");
-
   py::class_<SolverInterface, PySolverInterface>(
       m, "SolverInterface", doc.SolverInterface.doc)
       .def(py::init([]() { return std::make_unique<PySolverInterface>(); }),
@@ -387,6 +434,24 @@ top-level documentation for :py:mod:`pydrake.math`.
           },
           py::is_operator());
 
+  py::enum_<ProgramType>(m, "ProgramType", doc.ProgramType.doc)
+      .value("kLP", ProgramType::kLP, doc.ProgramType.kLP.doc)
+      .value("kQP", ProgramType::kQP, doc.ProgramType.kQP.doc)
+      .value("kSOCP", ProgramType::kSOCP, doc.ProgramType.kSOCP.doc)
+      .value("kSDP", ProgramType::kSDP, doc.ProgramType.kSDP.doc)
+      .value("kGP", ProgramType::kGP, doc.ProgramType.kGP.doc)
+      .value("kCGP", ProgramType::kCGP, doc.ProgramType.kCGP.doc)
+      .value("kMILP", ProgramType::kMILP, doc.ProgramType.kMILP.doc)
+      .value("kMIQP", ProgramType::kMIQP, doc.ProgramType.kMIQP.doc)
+      .value("kMISOCP", ProgramType::kMISOCP, doc.ProgramType.kMISOCP.doc)
+      .value("kMISDP", ProgramType::kMISDP, doc.ProgramType.kMISDP.doc)
+      .value("kQuadraticCostConicConstraint",
+          ProgramType::kQuadraticCostConicConstraint,
+          doc.ProgramType.kQuadraticCostConicConstraint.doc)
+      .value("kNLP", ProgramType::kNLP, doc.ProgramType.kNLP.doc)
+      .value("kLCP", ProgramType::kLCP, doc.ProgramType.kLCP.doc)
+      .value("kUnknown", ProgramType::kUnknown, doc.ProgramType.kUnknown.doc);
+
   py::enum_<SolverType>(m, "SolverType", doc.SolverType.doc)
       .value("kClp", SolverType::kClp, doc.SolverType.kClp.doc)
       .value("kCsdp", SolverType::kCsdp, doc.SolverType.kCsdp.doc)
@@ -424,8 +489,7 @@ top-level documentation for :py:mod:`pydrake.math`.
           py::arg("solver_id"), py::arg("solver_option"),
           py::arg("option_value"), doc.SolverOptions.SetOption.doc_str_option)
       .def("SetOption",
-          py::overload_cast<CommonSolverOption,
-              const std::variant<double, int, std::string>&>(
+          py::overload_cast<CommonSolverOption, SolverOptions::OptionValue>(
               &SolverOptions::SetOption),
           py::arg("key"), py::arg("value"),
           doc.SolverOptions.SetOption.doc_common_option)
@@ -441,7 +505,11 @@ top-level documentation for :py:mod:`pydrake.math`.
           },
           py::arg("solver_id"), doc.SolverOptions.GetOptionsDouble.doc)
       .def("common_solver_options", &SolverOptions::common_solver_options,
-          doc.SolverOptions.common_solver_options.doc);
+          doc.SolverOptions.common_solver_options.doc)
+      .def("get_print_file_name", &SolverOptions::get_print_file_name,
+          doc.SolverOptions.get_print_file_name.doc)
+      .def("get_print_to_console", &SolverOptions::get_print_to_console,
+          doc.SolverOptions.get_print_to_console.doc);
 
   py::enum_<CommonSolverOption>(
       m, "CommonSolverOption", doc.CommonSolverOption.doc)
@@ -449,7 +517,10 @@ top-level documentation for :py:mod:`pydrake.math`.
           doc.CommonSolverOption.kPrintFileName.doc)
       .value("kPrintToConsole", CommonSolverOption::kPrintToConsole,
           doc.CommonSolverOption.kPrintToConsole.doc);
+}
 
+void BindMathematicalProgram(py::module m) {
+  constexpr auto& doc = pydrake_doc.drake.solvers;
   py::class_<MathematicalProgramResult>(
       m, "MathematicalProgramResult", doc.MathematicalProgramResult.doc)
       .def(py::init<>(), doc.MathematicalProgramResult.ctor.doc)
@@ -718,13 +789,21 @@ top-level documentation for :py:mod:`pydrake.math`.
           py::arg("func"), py::arg("vars"), py::arg("description") = "",
           // N.B. There is no corresponding C++ method, so the docstring here
           // is a literal, not a reference to documentation_pybind.h
-          "Adds a cost function")
+          "Adds a cost function.")
       .def("AddCost",
           static_cast<Binding<Cost> (MathematicalProgram::*)(
               const Expression&)>(&MathematicalProgram::AddCost),
           // N.B. There is no corresponding C++ method, so the docstring here
           // is a literal, not a reference to documentation_pybind.h
-          "Adds a cost expression")
+          "Adds a cost expression.")
+      .def(
+          "AddCost",
+          [](MathematicalProgram* self, const std::shared_ptr<Cost>& obj,
+              const Eigen::Ref<const VectorXDecisionVariable>& vars) {
+            return self->AddCost(obj, vars);
+          },
+          py::arg("obj"), py::arg("vars"),
+          doc.MathematicalProgram.AddCost.doc_2args_obj_vars)
       .def("AddLinearCost",
           static_cast<Binding<LinearCost> (MathematicalProgram::*)(
               const Expression&)>(&MathematicalProgram::AddLinearCost),
@@ -931,32 +1010,40 @@ top-level documentation for :py:mod:`pydrake.math`.
               .doc_3args_double_double_constEigenMatrixBase)
       .def("AddLorentzConeConstraint",
           static_cast<Binding<LorentzConeConstraint> (MathematicalProgram::*)(
-              const Eigen::Ref<const VectorX<drake::symbolic::Expression>>&)>(
+              const Eigen::Ref<const VectorX<drake::symbolic::Expression>>&,
+              LorentzConeConstraint::EvalType)>(
               &MathematicalProgram::AddLorentzConeConstraint),
           py::arg("v"),
-          doc.MathematicalProgram.AddLorentzConeConstraint.doc_1args_v)
+          py::arg("eval_type") = LorentzConeConstraint::EvalType::kConvexSmooth,
+          doc.MathematicalProgram.AddLorentzConeConstraint
+              .doc_2args_v_eval_type)
       .def(
           "AddLorentzConeConstraint",
           [](MathematicalProgram* self,
               const symbolic::Expression& linear_expression,
-              const symbolic::Expression& quadratic_expression, double tol) {
+              const symbolic::Expression& quadratic_expression, double tol,
+              LorentzConeConstraint::EvalType eval_type) {
             return self->AddLorentzConeConstraint(
-                linear_expression, quadratic_expression, tol);
+                linear_expression, quadratic_expression, tol, eval_type);
           },
           py::arg("linear_expression"), py::arg("quadratic_expression"),
           py::arg("tol") = 0.,
+          py::arg("eval_type") = LorentzConeConstraint::EvalType::kConvexSmooth,
           doc.MathematicalProgram.AddLorentzConeConstraint
-              .doc_3args_linear_expression_quadratic_expression_tol)
+              .doc_4args_linear_expression_quadratic_expression_tol_eval_type)
       .def(
           "AddLorentzConeConstraint",
           [](MathematicalProgram* self,
               const Eigen::Ref<const Eigen::MatrixXd>& A,
               const Eigen::Ref<const Eigen::VectorXd>& b,
-              const Eigen::Ref<const VectorXDecisionVariable>& vars) {
-            return self->AddLorentzConeConstraint(A, b, vars);
+              const Eigen::Ref<const VectorXDecisionVariable>& vars,
+              LorentzConeConstraint::EvalType eval_type) {
+            return self->AddLorentzConeConstraint(A, b, vars, eval_type);
           },
-          py::arg("A"), py::arg("b"), py::arg("vars") = 0.,
-          doc.MathematicalProgram.AddLorentzConeConstraint.doc_3args_A_b_vars)
+          py::arg("A"), py::arg("b"), py::arg("vars"),
+          py::arg("eval_type") = LorentzConeConstraint::EvalType::kConvexSmooth,
+          doc.MathematicalProgram.AddLorentzConeConstraint
+              .doc_4args_A_b_vars_eval_type)
       .def(
           "AddRotatedLorentzConeConstraint",
           [](MathematicalProgram* self,
@@ -1010,8 +1097,7 @@ top-level documentation for :py:mod:`pydrake.math`.
               const Eigen::Ref<const MatrixX<Expression>>& e) {
             return self->AddPositiveSemidefiniteConstraint(e);
           },
-          doc.MathematicalProgram.AddPositiveSemidefiniteConstraint
-              .doc_1args_constEigenMatrixBase)
+          doc.MathematicalProgram.AddPositiveSemidefiniteConstraint.doc_1args_e)
       .def(
           "AddLinearMatrixInequalityConstraint",
           [](MathematicalProgram* self,
@@ -1369,20 +1455,10 @@ for every column of ``prog_var_vals``. )""")
       .def("decision_variable_index",
           &MathematicalProgram::decision_variable_index,
           doc.MathematicalProgram.decision_variable_index.doc)
-      .def(  // Remove this overload when #15272 is resolved.
-          "RemoveCost",
-          [](MathematicalProgram* self, const Binding<LinearCost>& cost) {
-            return self->RemoveCost(cost);
-          },
-          py::arg("cost"), doc.MathematicalProgram.RemoveCost.doc)
-      .def(  // Remove this overload when #15272 is resolved.
-          "RemoveCost",
-          [](MathematicalProgram* self, const Binding<QuadraticCost>& cost) {
-            return self->RemoveCost(cost);
-          },
-          py::arg("cost"), doc.MathematicalProgram.RemoveCost.doc)
-      .def("RemoveCost", &MathematicalProgram::RemoveCost,
-          doc.MathematicalProgram.RemoveCost.doc);
+      .def("RemoveCost", &MathematicalProgram::RemoveCost, py::arg("cost"),
+          doc.MathematicalProgram.RemoveCost.doc)
+      .def("RemoveConstraint", &MathematicalProgram::RemoveConstraint,
+          py::arg("constraint"), doc.MathematicalProgram.RemoveConstraint.doc);
 
   {
 #pragma GCC diagnostic push
@@ -1429,7 +1505,10 @@ for every column of ``prog_var_vals``. )""")
           doc.SolutionResult.kIterationLimit.doc)
       .value("kDualInfeasible", SolutionResult::kDualInfeasible,
           doc.SolutionResult.kDualInfeasible.doc);
+}  // NOLINT(readability/fn_size)
 
+void BindEvaluatorsAndBindings(py::module m) {
+  constexpr auto& doc = pydrake_doc.drake.solvers;
   {
     using Class = EvaluatorBase;
     constexpr auto& cls_doc = doc.EvaluatorBase;
@@ -1463,14 +1542,8 @@ for every column of ``prog_var_vals``. )""")
     bind_eval(symbolic::Variable{}, symbolic::Expression{});
   }
 
-  RegisterBinding<EvaluatorBase>(&m, "EvaluatorBase")
-      .def(py::init([](py::object binding) {
-        // Define a type-erased downcast to mirror the implicit
-        // "downcast-ability" of Binding<> types.
-        return std::make_unique<Binding<EvaluatorBase>>(
-            binding.attr("evaluator")().cast<std::shared_ptr<EvaluatorBase>>(),
-            binding.attr("variables")().cast<VectorXDecisionVariable>());
-      }));
+  auto evaluator_binding = RegisterBinding<EvaluatorBase>(&m);
+  DefBindingCastConstructor<EvaluatorBase>(&evaluator_binding);
 
   py::class_<Constraint, EvaluatorBase, std::shared_ptr<Constraint>>(
       m, "Constraint", doc.Constraint.doc)
@@ -1584,7 +1657,9 @@ for every column of ``prog_var_vals``. )""")
           py::arg("eval_type") = LorentzConeConstraint::EvalType::kConvexSmooth,
           doc.LorentzConeConstraint.ctor.doc)
       .def("A", &LorentzConeConstraint::A, doc.LorentzConeConstraint.A.doc)
-      .def("b", &LorentzConeConstraint::b, doc.LorentzConeConstraint.b.doc);
+      .def("b", &LorentzConeConstraint::b, doc.LorentzConeConstraint.b.doc)
+      .def("eval_type", &LorentzConeConstraint::eval_type,
+          doc.LorentzConeConstraint.eval_type.doc);
 
   py::class_<RotatedLorentzConeConstraint, Constraint,
       std::shared_ptr<RotatedLorentzConeConstraint>>(
@@ -1690,27 +1765,17 @@ for every column of ``prog_var_vals``. )""")
       .def("b", &ExponentialConeConstraint::b,
           doc.ExponentialConeConstraint.b.doc);
 
-  RegisterBinding<Constraint>(&m, "Constraint")
-      .def(py::init([](py::object binding) {
-        // Define a type-erased downcast to mirror the implicit
-        // "downcast-ability" of Binding<> types.
-        return std::make_unique<Binding<Constraint>>(
-            binding.attr("evaluator")().cast<std::shared_ptr<Constraint>>(),
-            binding.attr("variables")().cast<VectorXDecisionVariable>());
-      }));
-  RegisterBinding<LinearConstraint>(&m, "LinearConstraint");
-  RegisterBinding<LorentzConeConstraint>(&m, "LorentzConeConstraint");
-  RegisterBinding<RotatedLorentzConeConstraint>(
-      &m, "RotatedLorentzConeConstraint");
-  RegisterBinding<LinearEqualityConstraint>(&m, "LinearEqualityConstraint");
-  RegisterBinding<BoundingBoxConstraint>(&m, "BoundingBoxConstraint");
-  RegisterBinding<PositiveSemidefiniteConstraint>(
-      &m, "PositiveSemidefiniteConstraint");
-  RegisterBinding<LinearMatrixInequalityConstraint>(
-      &m, "LinearMatrixInequalityConstraint");
-  RegisterBinding<LinearComplementarityConstraint>(
-      &m, "LinearComplementarityConstraint");
-  RegisterBinding<ExponentialConeConstraint>(&m, "ExponentialConeConstraint");
+  auto constraint_binding = RegisterBinding<Constraint>(&m);
+  DefBindingCastConstructor<Constraint>(&constraint_binding);
+  RegisterBinding<LinearConstraint>(&m);
+  RegisterBinding<LorentzConeConstraint>(&m);
+  RegisterBinding<RotatedLorentzConeConstraint>(&m);
+  RegisterBinding<LinearEqualityConstraint>(&m);
+  RegisterBinding<BoundingBoxConstraint>(&m);
+  RegisterBinding<PositiveSemidefiniteConstraint>(&m);
+  RegisterBinding<LinearMatrixInequalityConstraint>(&m);
+  RegisterBinding<LinearComplementarityConstraint>(&m);
+  RegisterBinding<ExponentialConeConstraint>(&m);
 
   // Mirror procedure for costs
   py::class_<Cost, EvaluatorBase, std::shared_ptr<Cost>> cost(
@@ -1773,17 +1838,21 @@ for every column of ``prog_var_vals``. )""")
           py::arg("new_A"), py::arg("new_b") = 0,
           doc.L2NormCost.UpdateCoefficients.doc);
 
-  RegisterBinding<Cost>(&m, "Cost");
-  RegisterBinding<LinearCost>(&m, "LinearCost");
-  RegisterBinding<QuadraticCost>(&m, "QuadraticCost");
-  RegisterBinding<L2NormCost>(&m, "L2NormCost");
+  auto cost_binding = RegisterBinding<Cost>(&m);
+  DefBindingCastConstructor<Cost>(&cost_binding);
+  RegisterBinding<LinearCost>(&m);
+  RegisterBinding<QuadraticCost>(&m);
+  RegisterBinding<L2NormCost>(&m);
 
   py::class_<VisualizationCallback, EvaluatorBase,
       std::shared_ptr<VisualizationCallback>>(
       m, "VisualizationCallback", doc.VisualizationCallback.doc);
 
-  RegisterBinding<VisualizationCallback>(&m, "VisualizationCallback");
+  RegisterBinding<VisualizationCallback>(&m);
+}  // NOLINT(readability/fn_size)
 
+void BindFreeFunctions(py::module m) {
+  constexpr auto& doc = pydrake_doc.drake.solvers;
   // Bind the free functions in choose_best_solver.h and solve.h.
   m  // BR
       .def("ChooseBestSolver", &solvers::ChooseBestSolver, py::arg("prog"),
@@ -1797,10 +1866,33 @@ for every column of ``prog_var_vals``. )""")
               const std::optional<Eigen::VectorXd>&,
               const std::optional<SolverOptions>&>(&solvers::Solve),
           py::arg("prog"), py::arg("initial_guess") = py::none(),
-          py::arg("solver_options") = py::none(), doc.Solve.doc_3args);
+          py::arg("solver_options") = py::none(), doc.Solve.doc_3args)
+      .def("GetProgramType", &solvers::GetProgramType, doc.GetProgramType.doc);
+}
+
+PYBIND11_MODULE(_mathematicalprogram, m) {
+  m.doc() = R"""(
+Bindings for MathematicalProgram
+
+If you are formulating constraints using symbolic formulas, please review the
+top-level documentation for :py:mod:`pydrake.math`.
+)""";
+  // N.B. Only necessary for forwarding module for deprecation, to ensure
+  // docstrings from pybind11 use the corerct module spelling.
+  m.attr("__name__") = "pydrake.solvers.mathematicalprogram";
+
+  py::module::import("pydrake.autodiffutils");
+  py::module::import("pydrake.symbolic");
+
+  BindEvaluatorsAndBindings(m);
+  BindSolverInterfaceAndFlags(m);
+  BindMathematicalProgram(m);
+  BindFreeFunctions(m);
+
+  DefTesting(m.def_submodule("_testing"));
 
   ExecuteExtraPythonCode(m);
-}  // NOLINT(readability/fn_size)
+}
 
 }  // namespace pydrake
 }  // namespace drake

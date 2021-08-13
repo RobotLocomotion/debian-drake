@@ -40,7 +40,7 @@ JacoCommandReceiver::JacoCommandReceiver(int num_joints, int num_fingers)
       {all_input_ports_ticket(), numeric_parameter_ticket(arm_param), });
 
   DeclareVectorOutputPort(
-      "state", BasicVector<double>((num_joints + num_fingers) * 2),
+      "state", (num_joints + num_fingers) * 2,
       [this](const Context<double>& context, BasicVector<double>* output) {
         output->SetFromVector(this->input_state(context));
       });
@@ -54,7 +54,7 @@ void JacoCommandReceiver::set_initial_position(
 
 // Returns (in "result") the command message input, or if a message has not
 // been received yet returns the initial command (as optionally set by the
-// user).  The result will always have have num_joints_ positions and torques.
+// user).  The result will always have num_joints_ positions and torques.
 void JacoCommandReceiver::CalcInput(
   const Context<double>& context, lcmt_jaco_command* result) const {
   if (!get_input_port().HasValue(context)) {

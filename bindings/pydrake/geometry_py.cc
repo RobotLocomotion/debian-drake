@@ -22,6 +22,7 @@
 #include "drake/geometry/optimization/hpolyhedron.h"
 #include "drake/geometry/optimization/hyperellipsoid.h"
 #include "drake/geometry/optimization/iris.h"
+#include "drake/geometry/optimization/minkowski_sum.h"
 #include "drake/geometry/optimization/point.h"
 #include "drake/geometry/optimization/vpolytope.h"
 #include "drake/geometry/proximity/obj_to_surface_mesh.h"
@@ -390,9 +391,12 @@ void DoScalarDependentDefinitions(py::module m, T) {
     cls  // BR
          // Scene-graph wide data.
         .def("num_sources", &Class::num_sources, cls_doc.num_sources.doc)
-        .def("num_frames", &Class::num_frames, cls_doc.num_frames.doc)
-        .def(
-            "all_frame_ids",
+        .def("num_frames", &Class::num_frames, cls_doc.num_frames.doc);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    cls.def("all_frame_ids",
+        WrapDeprecated(cls_doc.all_frame_ids.doc_deprecated,
             [](Class* self) -> std::vector<FrameId> {
               std::vector<FrameId> frame_ids;
               frame_ids.reserve(self->num_frames());
@@ -400,8 +404,13 @@ void DoScalarDependentDefinitions(py::module m, T) {
                 frame_ids.push_back(id);
               }
               return frame_ids;
-            },
-            cls_doc.all_frame_ids.doc)
+            }),
+        cls_doc.all_frame_ids.doc_deprecated);
+#pragma GCC diagnostic pop
+
+    cls  // BR
+        .def("GetAllFrameIds", &Class::GetAllFrameIds,
+            cls_doc.GetAllFrameIds.doc)
         .def("world_frame_id", &Class::world_frame_id,
             cls_doc.world_frame_id.doc)
         .def("num_geometries", &Class::num_geometries,
@@ -513,13 +522,19 @@ void DoScalarDependentDefinitions(py::module m, T) {
     cls  // BR
         .def(py::init<>(), cls_doc.ctor.doc)
         .def("get_source_pose_port", &Class::get_source_pose_port,
-            py_rvp::reference_internal, cls_doc.get_source_pose_port.doc)
-        .def(
-            "get_pose_bundle_output_port",
-            [](Class* self) -> const systems::OutputPort<T>& {
-              return self->get_pose_bundle_output_port();
-            },
-            py_rvp::reference_internal, cls_doc.get_pose_bundle_output_port.doc)
+            py_rvp::reference_internal, cls_doc.get_source_pose_port.doc);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    cls  // BR
+        .def("get_pose_bundle_output_port",
+            WrapDeprecated(cls_doc.get_pose_bundle_output_port.doc_deprecated,
+                &Class::get_pose_bundle_output_port),
+            py_rvp::reference_internal,
+            cls_doc.get_pose_bundle_output_port.doc_deprecated);
+#pragma GCC diagnostic pop
+
+    cls  // BR
         .def("get_query_output_port", &Class::get_query_output_port,
             py_rvp::reference_internal, cls_doc.get_query_output_port.doc)
         .def("model_inspector", &Class::model_inspector,
@@ -553,26 +568,51 @@ void DoScalarDependentDefinitions(py::module m, T) {
                 &Class::RegisterAnchoredGeometry),
             py::arg("source_id"), py::arg("geometry"),
             cls_doc.RegisterAnchoredGeometry.doc)
+        .def("collision_filter_manager",
+            overload_cast_explicit<CollisionFilterManager, Context<T>*>(
+                &Class::collision_filter_manager),
+            py::arg("context"), cls_doc.collision_filter_manager.doc_1args)
+        .def("collision_filter_manager",
+            overload_cast_explicit<CollisionFilterManager>(
+                &Class::collision_filter_manager),
+            cls_doc.collision_filter_manager.doc_0args);
+
+// TODO(2021-11-01) Remove these bindings with deprecated code. We can also
+//  eliminate the breaking "cls //BR" below and put it all together in a stream
+//  of .defs.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    cls  // BR
         .def("ExcludeCollisionsBetween",
-            py::overload_cast<const GeometrySet&, const GeometrySet&>(
-                &Class::ExcludeCollisionsBetween),
+            WrapDeprecated(
+                cls_doc.ExcludeCollisionsBetween.doc_deprecated_2args,
+                py::overload_cast<const GeometrySet&, const GeometrySet&>(
+                    &Class::ExcludeCollisionsBetween)),
             py_rvp::reference_internal, py::arg("setA"), py::arg("setB"),
-            cls_doc.ExcludeCollisionsBetween.doc_2args)
+            cls_doc.ExcludeCollisionsBetween.doc_deprecated_2args)
         .def("ExcludeCollisionsBetween",
-            overload_cast_explicit<void, Context<T>*, const GeometrySet&,
-                const GeometrySet&>(&Class::ExcludeCollisionsBetween),
+            WrapDeprecated(
+                cls_doc.ExcludeCollisionsBetween.doc_deprecated_3args,
+                overload_cast_explicit<void, Context<T>*, const GeometrySet&,
+                    const GeometrySet&>(&Class::ExcludeCollisionsBetween)),
             py_rvp::reference_internal, py::arg("context"), py::arg("setA"),
-            py::arg("setB"), cls_doc.ExcludeCollisionsBetween.doc_3args)
+            py::arg("setB"),
+            cls_doc.ExcludeCollisionsBetween.doc_deprecated_3args)
         .def("ExcludeCollisionsWithin",
-            py::overload_cast<const GeometrySet&>(
-                &Class::ExcludeCollisionsWithin),
+            WrapDeprecated(cls_doc.ExcludeCollisionsWithin.doc_deprecated_1args,
+                py::overload_cast<const GeometrySet&>(
+                    &Class::ExcludeCollisionsWithin)),
             py_rvp::reference_internal, py::arg("set"),
-            cls_doc.ExcludeCollisionsWithin.doc_1args)
+            cls_doc.ExcludeCollisionsWithin.doc_deprecated_1args)
         .def("ExcludeCollisionsWithin",
-            overload_cast_explicit<void, Context<T>*, const GeometrySet&>(
-                &Class::ExcludeCollisionsWithin),
+            WrapDeprecated(cls_doc.ExcludeCollisionsWithin.doc_deprecated_2args,
+                overload_cast_explicit<void, Context<T>*, const GeometrySet&>(
+                    &Class::ExcludeCollisionsWithin)),
             py_rvp::reference_internal, py::arg("context"), py::arg("set"),
-            cls_doc.ExcludeCollisionsWithin.doc_2args)
+            cls_doc.ExcludeCollisionsWithin.doc_deprecated_2args);
+#pragma GCC diagnostic pop
+
+    cls  // BR
         .def("AddRenderer", &Class::AddRenderer, py::arg("name"),
             py::arg("renderer"), cls_doc.AddRenderer.doc)
         .def("HasRenderer", &Class::HasRenderer, py::arg("name"),
@@ -774,7 +814,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
     auto cls = DefineTemplateClassWithDefault<Class>(
         m, "SignedDistancePair", param, doc.SignedDistancePair.doc);
     cls  // BR
-        .def(ParamInit<Class>(), doc.SignedDistancePair.ctor.doc_6args)
+        .def(ParamInit<Class>(), doc.SignedDistancePair.ctor.doc)
         .def_readwrite("id_A", &SignedDistancePair<T>::id_A,
             doc.SignedDistancePair.id_A.doc)
         .def_readwrite("id_B", &SignedDistancePair<T>::id_B,
@@ -790,21 +830,6 @@ void DoScalarDependentDefinitions(py::module m, T) {
         .def_readwrite("nhat_BA_W", &SignedDistancePair<T>::nhat_BA_W,
             return_value_policy_for_scalar_type<T>(),
             doc.SignedDistancePair.nhat_BA_W.doc);
-
-    constexpr char deprecated_unique_flag_doc[] =
-        "SignedDistancePair will no longer report uniqueness. If you require "
-        "knowledge of uniqueness, please contact the Drake team. This will be "
-        "removed on or after 2021-08-01.";
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    cls.def_property(
-        "is_nhat_BA_W_unique",
-        [](const Class* self) { return self->is_nhat_BA_W_unique; },
-        [](Class* self, int value) { self->is_nhat_BA_W_unique = value; },
-        deprecated_unique_flag_doc);
-#pragma GCC diagnostic pop
-
-    DeprecateAttribute(cls, "is_nhat_BA_W_unique", deprecated_unique_flag_doc);
   }
 
   // SignedDistanceToPoint
@@ -813,7 +838,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
     auto cls = DefineTemplateClassWithDefault<Class>(
         m, "SignedDistanceToPoint", param, doc.SignedDistanceToPoint.doc);
     cls  // BR
-        .def(ParamInit<Class>(), doc.SignedDistanceToPoint.ctor.doc_4args)
+        .def(ParamInit<Class>(), doc.SignedDistanceToPoint.ctor.doc)
         .def_readwrite("id_G", &SignedDistanceToPoint<T>::id_G,
             doc.SignedDistanceToPoint.id_G.doc)
         .def_readwrite("p_GN", &SignedDistanceToPoint<T>::p_GN,
@@ -960,7 +985,32 @@ void DoScalarIndependentDefinitions(py::module m) {
   BindIdentifier<SourceId>(m, "SourceId", doc.SourceId.doc);
   BindIdentifier<FrameId>(m, "FrameId", doc.FrameId.doc);
   BindIdentifier<GeometryId>(m, "GeometryId", doc.GeometryId.doc);
+  // CollisionFilterDeclaration.
+  {
+    using Class = CollisionFilterDeclaration;
+    constexpr auto& cls_doc = doc.CollisionFilterDeclaration;
 
+    py::class_<Class>(m, "CollisionFilterDeclaration", cls_doc.doc)
+        .def(py::init(), cls_doc.ctor.doc)
+        .def("AllowBetween", &Class::AllowBetween, py::arg("set_A"),
+            py::arg("set_B"), py_rvp::reference, cls_doc.AllowBetween.doc)
+        .def("AllowWithin", &Class::AllowWithin, py::arg("geometry_set"),
+            py_rvp::reference, cls_doc.AllowWithin.doc)
+        .def("ExcludeBetween", &Class::ExcludeBetween, py::arg("set_A"),
+            py::arg("set_B"), py_rvp::reference, cls_doc.ExcludeBetween.doc)
+        .def("ExcludeWithin", &Class::ExcludeWithin, py::arg("geometry_set"),
+            py_rvp::reference, cls_doc.ExcludeWithin.doc);
+  }
+
+  //  CollisionFilterManager
+  {
+    using Class = CollisionFilterManager;
+    constexpr auto& cls_doc = doc.CollisionFilterManager;
+    py::class_<Class>(m, "CollisionFilterManager", cls_doc.doc)
+        .def("Apply", &Class::Apply, py::arg("declaration"), cls_doc.Apply.doc);
+  }
+
+  // Role enumeration
   {
     constexpr auto& cls_doc = doc.Role;
     py::enum_<Role>(m, "Role", py::arithmetic(), cls_doc.doc)
@@ -970,6 +1020,7 @@ void DoScalarIndependentDefinitions(py::module m) {
         .value("kPerception", Role::kPerception, cls_doc.kPerception.doc);
   }
 
+  // RoleAssign enumeration
   {
     constexpr auto& cls_doc = doc.RoleAssign;
     using Class = RoleAssign;
@@ -978,6 +1029,7 @@ void DoScalarIndependentDefinitions(py::module m) {
         .value("kReplace", Class::kReplace, cls_doc.kReplace.doc);
   }
 
+  // DrakeVisualizerParams
   {
     using Class = DrakeVisualizerParams;
     constexpr auto& cls_doc = doc.DrakeVisualizerParams;
@@ -1102,6 +1154,7 @@ void DoScalarIndependentDefinitions(py::module m) {
     DefCopyAndDeepCopy(&cls);
   }
 
+  // GeometryProperties
   {
     using Class = GeometryProperties;
     constexpr auto& cls_doc = doc.GeometryProperties;
@@ -1394,6 +1447,23 @@ void def_geometry_optimization(py::module m) {
   }
 
   {
+    const auto& cls_doc = doc.MinkowskiSum;
+    py::class_<MinkowskiSum, ConvexSet>(m, "MinkowskiSum", cls_doc.doc)
+        .def(py::init<const ConvexSets&>(), py::arg("sets"),
+            cls_doc.ctor.doc_1args)
+        .def(py::init<const ConvexSet&, const ConvexSet&>(), py::arg("setA"),
+            py::arg("setB"), cls_doc.ctor.doc_2args)
+        .def(py::init<const QueryObject<double>&, GeometryId,
+                 std::optional<FrameId>>(),
+            py::arg("query_object"), py::arg("geometry_id"),
+            py::arg("reference_frame") = std::nullopt, cls_doc.ctor.doc_3args)
+        .def("num_terms", &MinkowskiSum::num_terms, cls_doc.num_terms.doc)
+        .def("term", &MinkowskiSum::term, py_rvp::reference_internal,
+            py::arg("index"), cls_doc.term.doc);
+    py::implicitly_convertible<MinkowskiSum, copyable_unique_ptr<ConvexSet>>();
+  }
+
+  {
     const auto& cls_doc = doc.Point;
     py::class_<Point, ConvexSet>(m, "Point", cls_doc.doc)
         .def(py::init<const Eigen::Ref<const Eigen::VectorXd>&>(), py::arg("x"),
@@ -1403,7 +1473,8 @@ void def_geometry_optimization(py::module m) {
             py::arg("query_object"), py::arg("geometry_id"),
             py::arg("reference_frame") = std::nullopt,
             py::arg("maximum_allowable_radius") = 0.0, cls_doc.ctor.doc_4args)
-        .def("x", &Point::x, cls_doc.x.doc);
+        .def("x", &Point::x, cls_doc.x.doc)
+        .def("set_x", &Point::set_x, py::arg("x"), cls_doc.set_x.doc);
     py::implicitly_convertible<Point, copyable_unique_ptr<ConvexSet>>();
   }
 
@@ -1464,6 +1535,7 @@ void def_geometry_all(py::module m) {
 
 PYBIND11_MODULE(geometry, m) {
   PYDRAKE_PREVENT_PYTHON3_MODULE_REIMPORT(m);
+  py::module::import("pydrake.common");
   py::module::import("pydrake.systems.framework");
   py::module::import("pydrake.systems.lcm");
 

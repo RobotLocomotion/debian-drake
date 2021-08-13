@@ -152,8 +152,8 @@ class PendulumTests : public ::testing::Test {
         UnitInertia<double>::StraightLine(link2_Ic_, Vector3d::UnitY());
     // Spatial inertia about L's center of mass Lcm.
     SpatialInertia<double> M_Lcm(link2_mass_, link2_com_L, G_Lcm);
-    // Since L's frame origin Lo is not at the the lower link's center of mass
-    // Lcm, we must shift M_Lcm to obtain M_Lo.
+    // Since L's frame origin Lo is not at the lower link's center of mass Lcm,
+    // we must shift M_Lcm to obtain M_Lo.
     const Vector3d p_LoLcm(0.0, -half_link2_length_, 0.0);
     SpatialInertia<double> M_L = M_Lcm.Shift(-p_LoLcm);
 
@@ -490,13 +490,13 @@ TEST_F(PendulumTests, CreateContext) {
 
   // Verifies the correct number of generalized positions and velocities.
   EXPECT_EQ(tree.get_positions(*context).size(), 2);
-  EXPECT_EQ(tree.get_mutable_positions(&*context).size(), 2);
+  EXPECT_EQ(tree.GetMutablePositions(&*context).size(), 2);
   EXPECT_EQ(tree.get_velocities(*context).size(), 2);
-  EXPECT_EQ(tree.get_mutable_velocities(&*context).size(), 2);
+  EXPECT_EQ(tree.GetMutableVelocities(&*context).size(), 2);
 
   // Verifies methods to retrieve fixed-sized segments of the state.
   EXPECT_EQ(tree.get_state_segment<1>(*context, 1).size(), 1);
-  EXPECT_EQ(tree.get_mutable_state_segment<1>(&*context, 1).size(), 1);
+  EXPECT_EQ(tree.GetMutableStateSegment<1>(&*context, 1).size(), 1);
 
   // Set the poses of each body in the position kinematics cache to have an
   // arbitrary value that we can use for unit testing. In practice the poses in

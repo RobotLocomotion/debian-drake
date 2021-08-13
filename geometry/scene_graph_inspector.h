@@ -95,9 +95,19 @@ class SceneGraphInspector {
    @endcode
 
    This includes the id for the world frame.  */
+  DRAKE_DEPRECATED("2021-12-01", "Please use GetAllFrameIds() instead.")
   typename GeometryState<T>::FrameIdRange all_frame_ids() const {
     DRAKE_DEMAND(state_ != nullptr);
     return state_->get_frame_ids();
+  }
+
+  /** Returns all of the frame ids in the scene graph. The order is not
+   guaranteed; but it will be consistent across invocations as long as there are
+   no changes to the topology. The ids includes the world frame's id.  */
+  typename std::vector<FrameId> GetAllFrameIds() const {
+    DRAKE_DEMAND(state_ != nullptr);
+    typename GeometryState<T>::FrameIdRange range = state_->get_frame_ids();
+    return std::vector<FrameId>(range.begin(), range.end());
   }
 
   /** Reports the id for the world frame.  */
@@ -165,11 +175,13 @@ class SceneGraphInspector {
   }
 
   /** Returns all pairs of geometries that are candidates for collision (in no
-   particular order). See SceneGraph::ExcludeCollisionsBetween() or
-   SceneGraph::ExcludeCollisionsWithin() for information on why a particular
-   pair may _not_ be a candidate. For candidate pair (A, B), the candidate is
-   always guaranteed to be reported in a fixed order (i.e., always (A, B) and
-   _never_ (B, A)). This is the same ordering as would be returned by, e.g.,
+   particular order). See CollisionFilterDeclaration and
+   CollisionFilterManager::Apply() for information on why a particular pair may
+   _not_ be a candidate.
+
+   For candidate pair (A, B), the candidate is always guaranteed to be reported
+   in a fixed order (i.e., always (A, B) and _never_ (B, A)). This is the same
+   ordering as would be returned by, e.g.,
    QueryObject::ComputePointPairPenetration().  */
   std::set<std::pair<GeometryId, GeometryId>> GetCollisionCandidates()
       const {

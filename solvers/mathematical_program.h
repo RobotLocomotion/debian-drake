@@ -883,6 +883,8 @@ class MathematicalProgram {
 
   /**
    * Adds a generic cost to the optimization program.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<Cost> AddCost(const Binding<Cost>& binding);
 
@@ -890,6 +892,8 @@ class MathematicalProgram {
    * Adds a cost type to the optimization program.
    * @param obj The added objective.
    * @param vars The decision variables on which the cost depend.
+   *
+   * @pydrake_mkdoc_identifier{2args_obj_vars}
    */
   template <typename C>
   auto AddCost(const std::shared_ptr<C>& obj,
@@ -903,6 +907,8 @@ class MathematicalProgram {
    * Adds a generic cost to the optimization program.
    * @param obj The added objective.
    * @param vars The decision variables on which the cost depend.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   template <typename C>
   auto AddCost(const std::shared_ptr<C>& obj, const VariableRefList& vars) {
@@ -922,6 +928,8 @@ class MathematicalProgram {
   /**
    * Adds a cost to the optimization program on a list of variables.
    * @tparam F it should define functions numInputs, numOutputs and eval. Check
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   template <typename F>
   typename std::enable_if_t<internal::is_cost_functor_candidate<F>::value,
@@ -934,6 +942,8 @@ class MathematicalProgram {
    * Adds a cost to the optimization program on an Eigen::Vector containing
    * decision variables.
    * @tparam F Type that defines functions numInputs, numOutputs and eval.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   template <typename F>
   typename std::enable_if_t<internal::is_cost_functor_candidate<F>::value,
@@ -947,6 +957,8 @@ class MathematicalProgram {
    * Statically assert if a user inadvertently passes a
    * binding-compatible Constraint.
    * @tparam F The type to check.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   template <typename F, typename Vars>
   typename std::enable_if_t<internal::assert_if_is_constraint<F>::value,
@@ -959,6 +971,8 @@ class MathematicalProgram {
    * Adds a cost term of the form c'*x.
    * Applied to a subset of the variables and pushes onto
    * the linear cost data structure.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<LinearCost> AddCost(const Binding<LinearCost>& binding);
 
@@ -1007,6 +1021,8 @@ class MathematicalProgram {
    * Adds a cost term of the form 0.5*x'*Q*x + b'x.
    * Applied to subset of the variables and pushes onto
    * the quadratic cost data structure.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<QuadraticCost> AddCost(const Binding<QuadraticCost>& binding);
 
@@ -1151,6 +1167,8 @@ class MathematicalProgram {
    * @param e The linear or quadratic expression of the cost.
    * @pre `e` is linear or `e` is quadratic. Otherwise throws a runtime error.
    * @return The newly created cost, together with the bound variables.
+   *
+   * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<Cost> AddCost(const symbolic::Expression& e);
 
@@ -1235,7 +1253,7 @@ class MathematicalProgram {
    * 1. <tt>lb <= e <= ub</tt> is a trivial constraint such as 1 <= 2 <= 3.
    * 2. <tt>lb <= e <= ub</tt> is unsatisfiable such as 1 <= -5 <= 3
    *
-   * @param e A symbolic expression of the the decision variables.
+   * @param e A symbolic expression of the decision variables.
    * @param lb A scalar, the lower bound.
    * @param ub A scalar, the upper bound.
    *
@@ -1893,9 +1911,14 @@ class MathematicalProgram {
    * Vector4<symbolic::Expression> v(x+1, y+1, x, 2.);
    * prog.AddLorentzConeConstraint(v);
    * @endcode
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    */
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
-      const Eigen::Ref<const VectorX<symbolic::Expression>>& v);
+      const Eigen::Ref<const VectorX<symbolic::Expression>>& v,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth);
 
   /**
    * Adds Lorentz cone constraint on the linear expression v1 and quadratic
@@ -1905,6 +1928,9 @@ class MathematicalProgram {
    * @param tol The tolerance to determine if the matrix in v2 is positive
    * semidefinite or not. @see DecomposePositiveQuadraticForm for more
    * explanation. @default is 0.
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    * @retval binding The newly added Lorentz cone constraint, together with the
    * bound variables.
    * @pre
@@ -1935,7 +1961,9 @@ class MathematicalProgram {
    */
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
       const symbolic::Expression& linear_expression,
-      const symbolic::Expression& quadratic_expression, double tol = 0);
+      const symbolic::Expression& quadratic_expression, double tol = 0,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth);
 
   /**
    * Adds Lorentz cone constraint referencing potentially a subset of the
@@ -1953,14 +1981,20 @@ class MathematicalProgram {
    * @param b A @f$\mathbb{R}^n@f$ vector, whose number of rows equals to the
    * size of the decision variables.
    * @param vars The list of @f$ m @f$ decision variables.
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    * @return The newly added Lorentz cone constraint.
    *
    * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
       const Eigen::Ref<const Eigen::MatrixXd>& A,
-      const Eigen::Ref<const Eigen::VectorXd>& b, const VariableRefList& vars) {
-    return AddLorentzConeConstraint(A, b, ConcatenateVariableRefList(vars));
+      const Eigen::Ref<const Eigen::VectorXd>& b, const VariableRefList& vars,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth) {
+    return AddLorentzConeConstraint(A, b, ConcatenateVariableRefList(vars),
+                                    eval_type);
   }
 
   /**
@@ -1979,6 +2013,9 @@ class MathematicalProgram {
    * @param b A @f$\mathbb{R}^n@f$ vector, whose number of rows equals to the
    * size of the decision variables.
    * @param vars The Eigen vector of @f$ m @f$ decision variables.
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    * @return The newly added Lorentz cone constraint.
    *
    * For example, to add the Lorentz cone constraint
@@ -1997,7 +2034,9 @@ class MathematicalProgram {
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
       const Eigen::Ref<const Eigen::MatrixXd>& A,
       const Eigen::Ref<const Eigen::VectorXd>& b,
-      const Eigen::Ref<const VectorXDecisionVariable>& vars);
+      const Eigen::Ref<const VectorXDecisionVariable>& vars,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth);
 
   /**
    * Imposes that a vector @f$ x\in\mathbb{R}^m @f$ lies in Lorentz cone. Namely
@@ -2008,13 +2047,19 @@ class MathematicalProgram {
    * x(0) >= sqrt(x(1)² + ... + x(m-1)²)
    * <-->
    * @param vars The stacked column of vars should lie within the Lorentz cone.
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    * @return The newly added Lorentz cone constraint.
    *
    * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
-      const VariableRefList& vars) {
-    return AddLorentzConeConstraint(ConcatenateVariableRefList(vars));
+      const VariableRefList& vars,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth) {
+    return AddLorentzConeConstraint(ConcatenateVariableRefList(vars),
+                                    eval_type);
   }
 
   /**
@@ -2026,18 +2071,23 @@ class MathematicalProgram {
    * x(0) >= sqrt(x(1)² + ... + x(m-1)²)
    * <-->
    * @param vars The stacked column of vars should lie within the Lorentz cone.
+   * @param eval_type The evaluation type when evaluating the lorentz cone
+   * constraint in generic optimization. Refer to
+   * LorentzConeConstraint::EvalType for more details.
    * @return The newly added Lorentz cone constraint.
    *
    * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   template <int rows>
   Binding<LorentzConeConstraint> AddLorentzConeConstraint(
-      const Eigen::MatrixBase<VectorDecisionVariable<rows>>& vars) {
+      const Eigen::MatrixBase<VectorDecisionVariable<rows>>& vars,
+      LorentzConeConstraint::EvalType eval_type =
+          LorentzConeConstraint::EvalType::kConvexSmooth) {
     Eigen::Matrix<double, rows, rows> A(vars.rows(), vars.rows());
     A.setIdentity();
     Eigen::Matrix<double, rows, 1> b(vars.rows());
     b.setZero();
-    return AddLorentzConeConstraint(A, b, vars);
+    return AddLorentzConeConstraint(A, b, vars, eval_type);
   }
 
   /**
@@ -2302,7 +2352,6 @@ class MathematicalProgram {
    * Adds a positive semidefinite constraint on a symmetric matrix of symbolic
    * expressions @p e. We create a new symmetric matrix of variables M being
    * positive semidefinite, with the linear equality constraint e == M.
-   * @tparam Derived An Eigen Matrix of symbolic expressions.
    * @param e Imposes constraint "e is positive semidefinite".
    * @pre{1. e is symmetric.
    *      2. e(i, j) is linear for all i, j
@@ -2324,28 +2373,15 @@ class MathematicalProgram {
    * prog.AddPositiveSemidefiniteConstraint(e);
    * @endcode
    */
-  template <typename Derived>
-  typename std::enable_if_t<
-      std::is_same_v<typename Derived::Scalar, symbolic::Expression>,
-      Binding<PositiveSemidefiniteConstraint>>
-  AddPositiveSemidefiniteConstraint(const Eigen::MatrixBase<Derived>& e) {
-    DRAKE_DEMAND(e.rows() == e.cols());
-    DRAKE_ASSERT(e == e.transpose());
-    const int e_rows = Derived::RowsAtCompileTime;
-    MatrixDecisionVariable<e_rows, e_rows> M{};
-    if (e_rows == Eigen::Dynamic) {
-      M = NewSymmetricContinuousVariables(e.rows());
-    } else {
-      M = NewSymmetricContinuousVariables<e_rows>();
-    }
+  Binding<PositiveSemidefiniteConstraint> AddPositiveSemidefiniteConstraint(
+      const Eigen::Ref<const MatrixX<symbolic::Expression>>& e) {
+    // TODO(jwnimmer-tri) Move this whole function definition into the cc file.
+    DRAKE_THROW_UNLESS(e.rows() == e.cols());
+    DRAKE_ASSERT(CheckStructuralEquality(e, e.transpose().eval()));
+    const MatrixXDecisionVariable M = NewSymmetricContinuousVariables(e.rows());
     // Adds the linear equality constraint that M = e.
     AddLinearEqualityConstraint(
-        e - M, Eigen::Matrix<double, e_rows, e_rows>::Zero(e.rows(), e.rows()),
-        true);
-    const int M_flat_size =
-        e_rows == Eigen::Dynamic ? Eigen::Dynamic : e_rows * e_rows;
-    const Eigen::Map<Eigen::Matrix<symbolic::Variable, M_flat_size, 1>> M_flat(
-        &M(0, 0), e.size());
+        e - M, Eigen::MatrixXd::Zero(e.rows(), e.rows()), true);
     return AddPositiveSemidefiniteConstraint(M);
   }
 
@@ -3136,6 +3172,17 @@ class MathematicalProgram {
    * @p cost objects, then returns the repetition of @p cost in this program.
    */
   int RemoveCost(const Binding<Cost>& cost);
+
+  /** Removes @p constraint from this mathematical program.
+   * See @ref remove_cost_constraint "Remove costs or constraints" for more
+   * details.
+   * @return number of constraint objects removed from this program. If this
+   * program doesn't contain @p constraint, then returns 0. If this program
+   * contains multiple
+   * @p constraint objects, then returns the repetition of @p constraint in this
+   * program.
+   */
+  int RemoveConstraint(const Binding<Constraint>& constraint);
   //@}
 
  private:
@@ -3152,6 +3199,13 @@ class MathematicalProgram {
   int RemoveCostOrConstraintImpl(const Binding<C>& removal,
                                  ProgramAttribute affected_capability,
                                  std::vector<Binding<C>>* existings);
+
+  /**
+   * Check and update if this program requires @p query_capability
+   * This method should be called after changing stored
+   * costs/constraints/callbacks.
+   */
+  void UpdateRequiredCapability(ProgramAttribute query_capability);
 
   // maps the ID of a symbolic variable to the index of the variable stored
   // in the optimization program.

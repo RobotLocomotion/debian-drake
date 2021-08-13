@@ -13,7 +13,7 @@ namespace drake {
 
 /// A type-safe non-negative index class.
 ///
-/// @note This is *purposely* a separate class from @ref geometry::Identifier.
+/// @note This is *purposely* a separate class from Identifier.
 /// For more information, see @ref TypeSafeIndexVsIndentifier "this section".
 ///
 /// This class serves as an upgrade to the standard practice of passing `int`s
@@ -421,7 +421,7 @@ class TypeSafeIndex {
     return index_ <= other.index_;
   }
 
-  /// Allow less than or equals test test with unsigned integers.
+  /// Allow less than or equals test with unsigned integers.
   template <typename U>
   typename std::enable_if_t<
       std::is_integral_v<U> && std::is_unsigned_v<U>, bool>

@@ -30,8 +30,8 @@ void HydroelasticTractionCalculator<T>::
         std::vector<HydroelasticQuadraturePointData<T>>*
             traction_at_quadrature_points,
         SpatialForce<T>* F_Ac_W) const {
-  DRAKE_DEMAND(traction_at_quadrature_points);
-  DRAKE_DEMAND(F_Ac_W);
+  DRAKE_DEMAND(traction_at_quadrature_points != nullptr);
+  DRAKE_DEMAND(F_Ac_W != nullptr);
 
   // Use a second-order Gaussian quadrature rule. For linear pressure fields,
   // the second-order rule allows exact computation (to floating point error)
@@ -231,8 +231,8 @@ HydroelasticTractionCalculator<T>::CalcTractionAtQHelper(
   // We now divide the numerator and denominator of Eq. (3) by vₛ (that is, we
   // effectively multiply by 1) to write:
   //   fₜ = −μ 2/π atan(‖vₜ‖/vₛ)(vₜ/vₛ)/(‖vₜ‖/vₛ)fₙ                          (4)
-  // Finally we make make the substitution x = ‖vₜ‖/vₛ and group together the
-  // terms in x to get:
+  // Finally we make the substitution x = ‖vₜ‖/vₛ and group together the terms
+  // in x to get:
   //   fₜ =−μ 2/π vₜ/vₛ fₙ (atan(x)/x)
   // We then make the observation that the function atan(x)/x is continuosly
   // differentiable (that is the limits from both sides are exist and are

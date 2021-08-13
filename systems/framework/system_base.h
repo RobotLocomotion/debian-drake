@@ -377,21 +377,18 @@ class SystemBase : public internal::SystemMessageInterface {
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
 
-  /** Declares a cache entry by specifying member functions to use both for the
-  allocator and calculator. The signatures are: @code
-    ValueType MySystem::MakeValueType() const;
-    void MySystem::CalcCacheValue(const MyContext&, ValueType*) const;
-  @endcode
-  where `MySystem` is a class derived from `SystemBase`, `MyContext` is a class
-  derived from `ContextBase`, and `ValueType` is any concrete type such that
-  `Value<ValueType>` is permitted. (The method names are arbitrary.) Template
-  arguments will be deduced and do not need to be specified. See the
-  @ref DeclareCacheEntry_primary "primary DeclareCacheEntry() signature"
-  for more information about the parameters and behavior.
-  @see drake::Value
-  @warning This method is currently specified as `public` access, but will be
-  demoted to `protected` access on or after 2021-10-01. */
+  // Declares a cache entry via two member function pointers.
+  // This will be demoted to `protected` access on or after 2021-10-01, and then
+  // removed entirely on 2021-11-01.
   template <class MySystem, class MyContext, typename ValueType>
+  DRAKE_DEPRECATED("2021-11-01",
+      "This overload for DeclareCacheEntry is rarely the best choice; it is"
+      " unusual for allocation to actually require a boutique callback rather"
+      " than just a Clone of a model_value. We found that most uses of this"
+      " overload hindered readability, because other overloads would often do"
+      " the job more directly. If no existing overload works, you may wrap a"
+      " ValueProducer around your existing make method and call the primary"
+      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
   CacheEntry& DeclareCacheEntry(
       std::string description,
       ValueType (MySystem::*make)() const,
@@ -421,17 +418,18 @@ class SystemBase : public internal::SystemMessageInterface {
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
 
-  /** Declares a cache entry by specifying a model value of concrete type
-  `ValueType` and a calculator function that is a class member function (method)
-  with signature: @code
-    ValueType MySystem::CalcCacheValue(const MyContext&) const;
-  @endcode
-  Other than the calculator signature, this is identical to the other
-  @ref DeclareCacheEntry_model_and_calc "model and calculator signature",
-  please look there for more information.
-  @warning This method is currently specified as `public` access, but will be
-  demoted to `protected` access on or after 2021-10-01. */
+  // Declares a cache entry via a model value and calc member function pointer.
+  // This will be demoted to `protected` access on or after 2021-10-01, and then
+  // removed entirely on 2021-11-01.
   template <class MySystem, class MyContext, typename ValueType>
+  DRAKE_DEPRECATED("2021-11-01",
+      "This overload for DeclareCacheEntry is dispreferred because it might"
+      " not reuse heap storage from one calculation to the next, and so is"
+      " typically less efficient than the other overloads. A better option"
+      " is to change the ValueType returned by-value to be an output pointer"
+      " instead, and return void. If that is not possible, you may wrap a"
+      " ValueProducer around your existing method and call the primary"
+      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
   CacheEntry& DeclareCacheEntry(
       std::string description, const ValueType& model_value,
       ValueType (MySystem::*calc)(const MyContext&) const,
@@ -469,17 +467,18 @@ class SystemBase : public internal::SystemMessageInterface {
       std::set<DependencyTicket> prerequisites_of_calc = {
           all_sources_ticket()});
 
-  /** Declares a cache entry by specifying only a calculator function that is a
-  class member function (method) with signature:
-  @code
-    ValueType MySystem::CalcCacheValue(const MyContext&) const;
-  @endcode
-  Other than the calculator method's signature, this is identical to the other
-  @ref DeclareCacheEntry_calc_only "calculator-only signature";
-  please look there for more information.
-  @warning This method is currently specified as `public` access, but will be
-  demoted to `protected` access on or after 2021-10-01. */
+  // Declares a cache entry via a calculator member function pointer only.
+  // This will be demoted to `protected` access on or after 2021-10-01, and then
+  // removed entirely on 2021-11-01.
   template <class MySystem, class MyContext, typename ValueType>
+  DRAKE_DEPRECATED("2021-11-01",
+      "This overload for DeclareCacheEntry is dispreferred because it might"
+      " not reuse heap storage from one calculation to the next, and so is"
+      " typically less efficient than the other overloads. A better option"
+      " is to change the ValueType returned by-value to be an output pointer"
+      " instead, and return void. If that is not possible, you may wrap a"
+      " ValueProducer around your existing method and call the primary"
+      " DeclareCacheEntry overload that takes a ValueProducer, instead.")
   CacheEntry& DeclareCacheEntry(
       std::string description,
       ValueType (MySystem::*calc)(const MyContext&) const,
@@ -818,19 +817,57 @@ class SystemBase : public internal::SystemMessageInterface {
                : num_continuous_states();
   }
 
+  // Note that it is extremely unlikely that a Context will have an invalid
+  // system id because it is near impossible for a user to create one. We'll
+  // just assume it's valid as a precondition on the ValidateContext() methods.
+  // In Debug builds this will be reported as an error but otherwise a
+  // readable but imperfect "Not created for this System" message will issue
+  // if there is no id.
+
+  // @pre both `context` and `this` have valid System Ids.
   /** Checks whether the given context was created for this system.
-  @note This method is sufficiently fast for performance sensitive code. */
+  @note This method is sufficiently fast for performance sensitive code.
+  @throws std::exception if the System Ids don't match. */
   void ValidateContext(const ContextBase& context) const final {
     if (context.get_system_id() != system_id_) {
       ThrowValidateContextMismatch(context);
     }
   }
 
+  // @pre if `context` is non-null, then both `context` and `this` have valid
+  //      System Ids.
   /** Checks whether the given context was created for this system.
-  @note This method is sufficiently fast for performance sensitive code. */
-  void ValidateContext(ContextBase* context) const {
+  @note This method is sufficiently fast for performance sensitive code.
+  @throws std::exception if the System Ids don't match.
+  @throws std::exception if `context` is null. */
+  void ValidateContext(const ContextBase* context) const {
     DRAKE_THROW_UNLESS(context != nullptr);
     ValidateContext(*context);
+  }
+
+  // In contrast to Contexts it is easier to create some System-related objects
+  // without assigning them a valid system id. So for checking arbitrary object
+  // types we'll permit the object to have an invalid system id. (We still
+  // require that this SystemBase has a valid system id.)
+
+  // @pre `this` System has a valid system id.
+  /** Checks whether the given object was created for this system.
+  @note This method is sufficiently fast for performance sensitive code.
+  @throws std::exception if the System Ids don't match or if `object` doesn't
+                         have an associated System Id.
+  @throws std::exception if the argument type is a pointer and it is null. */
+  template <class Clazz>
+  void ValidateCreatedForThisSystem(const Clazz& object) const {
+    const internal::SystemId id = [&]() {
+      if constexpr (std::is_pointer_v<Clazz>) {
+        DRAKE_THROW_UNLESS(object != nullptr);
+        return object->get_system_id();
+      } else {
+        return object.get_system_id();
+      }
+    }();
+    if (!id.is_same_as_valid_id(system_id_))
+      ThrowNotCreatedForThisSystem(object, id);
   }
 
  protected:
@@ -1211,6 +1248,17 @@ class SystemBase : public internal::SystemMessageInterface {
     return abstract_parameter_tickets_[index];
   }
 
+  template <class Clazz>
+  [[noreturn]] void ThrowNotCreatedForThisSystem(const Clazz& object,
+                                                 internal::SystemId id) const {
+    unused(object);
+    ThrowNotCreatedForThisSystemImpl(
+        NiceTypeName::Get<std::remove_pointer_t<Clazz>>(), id);
+  }
+
+  [[noreturn]] void ThrowNotCreatedForThisSystemImpl(
+      const std::string& nice_type_name, internal::SystemId id) const;
+
   // Ports and cache entries hold their own DependencyTickets. Note that the
   // addresses of the elements are stable even if the std::vectors are resized.
 
@@ -1259,6 +1307,7 @@ class SystemBase : public internal::SystemMessageInterface {
 
 // Implementations of templatized DeclareCacheEntry() methods.
 
+// (This overload is deprecated.)
 // Takes make() and calc() member functions.
 template <class MySystem, class MyContext, typename ValueType>
 CacheEntry& SystemBase::DeclareCacheEntry(
@@ -1300,26 +1349,15 @@ CacheEntry& SystemBase::DeclareCacheEntry(
                 "Expected to be invoked from a SystemBase-derived System.");
   static_assert(std::is_base_of_v<ContextBase, MyContext>,
                 "Expected to be invoked with a ContextBase-derived Context.");
-  auto this_ptr = dynamic_cast<const MySystem*>(this);
-  DRAKE_DEMAND(this_ptr != nullptr);
-  auto allocate_callback = internal::AbstractValueCloner(model_value);
-  auto calc_callback = [this_ptr, calc](const ContextBase& context,
-                                        AbstractValue* result) {
-    const auto& typed_context = dynamic_cast<const MyContext&>(context);
-    ValueType& typed_result = result->get_mutable_value<ValueType>();
-    (this_ptr->*calc)(typed_context, &typed_result);
-  };
   auto& entry = DeclareCacheEntry(
-      std::move(description),
-      ValueProducer(std::move(allocate_callback), std::move(calc_callback)),
+      std::move(description), ValueProducer(this, model_value, calc),
       std::move(prerequisites_of_calc));
   return entry;
 }
 
+// (This overload is deprecated.)
 // Takes an initial value and value-returning calc() member function.
 // See the above output-argument signature for an explanation of the code.
-// TODO(sherm1) Consider whether common code in this and the previous method
-// can be factored out and shared rather than repeated.
 template <class MySystem, class MyContext, typename ValueType>
 CacheEntry& SystemBase::DeclareCacheEntry(
     std::string description, const ValueType& model_value,
@@ -1362,6 +1400,7 @@ CacheEntry& SystemBase::DeclareCacheEntry(
                            std::move(prerequisites_of_calc));
 }
 
+// (This overload is deprecated.)
 // Takes just a value-returning calc() member function, and
 // value-initializes the entry. See previous method for more information.
 template <class MySystem, class MyContext, typename ValueType>
@@ -1373,8 +1412,11 @@ CacheEntry& SystemBase::DeclareCacheEntry(
       std::is_default_constructible_v<ValueType>,
       "SystemBase::DeclareCacheEntry(calc): the calc-only overloads of "
       "this method requires that the output type has a default constructor");
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   return DeclareCacheEntry(std::move(description), ValueType{}, calc,
                            std::move(prerequisites_of_calc));
+#pragma GCC diagnostic pop
 }
 
 }  // namespace systems

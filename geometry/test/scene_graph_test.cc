@@ -73,12 +73,17 @@ class SceneGraphTester {
     scene_graph.CalcQueryObject(context, handle);
   }
 
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// 2021-12-01 Delete this helper in completing the pose bundle removal.
   template <typename T>
   static void CalcPoseBundle(const SceneGraph<T>& scene_graph,
                              const systems::Context<T>& context,
                              PoseBundle<T>* bundle) {
     return scene_graph.CalcPoseBundle(context, bundle);
   }
+#pragma GCC diagnostic pop
 
   template <typename T>
   static const GeometryState<T>& GetGeometryState(
@@ -359,19 +364,23 @@ TEST_F(SceneGraphTest, TransmogrifyContext) {
   DRAKE_EXPECT_NO_THROW(context_ad->SetTimeStateAndParametersFrom(*context));
 }
 
+// TODO(2021-11-01) Remove this test entirely when resolving deprecation.
 // Tests that exercising the collision filtering logic *after* allocation is
 // allowed.
-TEST_F(SceneGraphTest, PostAllocationCollisionFiltering) {
+TEST_F(SceneGraphTest, PostAllocationCollisionFilteringDeprecated) {
   SourceId source_id = scene_graph_.RegisterSource("filter_after_allocation");
   FrameId frame_id =
       scene_graph_.RegisterFrame(source_id, GeometryFrame("dummy"));
   CreateDefaultContext();
 
   GeometrySet geometry_set{frame_id};
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   DRAKE_EXPECT_NO_THROW(scene_graph_.ExcludeCollisionsWithin(geometry_set));
 
   DRAKE_EXPECT_NO_THROW(
       scene_graph_.ExcludeCollisionsBetween(geometry_set, geometry_set));
+#pragma GCC diagnostic pop
 }
 
 // Tests the model inspector. Exercises a token piece of functionality. The
@@ -587,6 +596,9 @@ GTEST_TEST(SceneGraphAutoDiffTest, InstantiateAutoDiff) {
   SceneGraphTester::GetQueryObjectPortValue(scene_graph, *context, &handle);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// 2021-12-01 Delete this entire test in completing the pose bundle removal.
 // Tests the pose vector output port -- specifically, the pose vector should
 // *never* include the world frame.
 GTEST_TEST(SceneGraphVisualizationTest, NoWorldInPoseVector) {
@@ -687,6 +699,7 @@ GTEST_TEST(SceneGraphVisualizationTest, NoWorldInPoseVector) {
     EXPECT_EQ(0, poses.get_num_poses());
   }
 }
+#pragma GCC diagnostic pop
 
 // Tests that exercise the Context-modifying API
 
@@ -731,7 +744,8 @@ GTEST_TEST(SceneGraphContextModifier, RegisterGeometry) {
       "Referenced geometry \\d+ has not been registered.");
 }
 
-GTEST_TEST(SceneGraphContextModifier, CollisionFilters) {
+// TODO(2021-11-01) Remove this test entirely when resolving deprecation.
+GTEST_TEST(SceneGraphContextModifier, CollisionFiltersDeprecated) {
   // Initializes the scene graph and context.
   SceneGraph<double> scene_graph;
   // Simple scene with three frames, each with a sphere which, by default
@@ -773,6 +787,8 @@ GTEST_TEST(SceneGraphContextModifier, CollisionFilters) {
   EXPECT_FALSE(inspector.CollisionFiltered(g_id1, g_id3));
   EXPECT_FALSE(inspector.CollisionFiltered(g_id2, g_id3));
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   scene_graph.ExcludeCollisionsWithin(context.get(),
                                       GeometrySet({g_id1, g_id2}));
   EXPECT_TRUE(inspector.CollisionFiltered(g_id1, g_id2));
@@ -782,6 +798,7 @@ GTEST_TEST(SceneGraphContextModifier, CollisionFilters) {
   scene_graph.ExcludeCollisionsBetween(context.get(),
                                        GeometrySet({g_id1, g_id2}),
                                        GeometrySet({g_id3}));
+#pragma GCC diagnostic pop
   EXPECT_TRUE(inspector.CollisionFiltered(g_id1, g_id2));
   EXPECT_TRUE(inspector.CollisionFiltered(g_id1, g_id3));
   EXPECT_TRUE(inspector.CollisionFiltered(g_id2, g_id3));

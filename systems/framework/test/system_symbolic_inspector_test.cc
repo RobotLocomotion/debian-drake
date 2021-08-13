@@ -20,12 +20,10 @@ class SparseSystem : public LeafSystem<symbolic::Expression> {
     this->DeclareInputPort(kUseDefaultName, kVectorValued, kSize);
     this->DeclareInputPort(kUseDefaultName, kVectorValued, kSize);
 
-    this->DeclareVectorOutputPort(
-        kUseDefaultName, BasicVector<symbolic::Expression>(kSize),
-        &SparseSystem::CalcY0);
-    this->DeclareVectorOutputPort(
-        kUseDefaultName, BasicVector<symbolic::Expression>(kSize),
-        &SparseSystem::CalcY1);
+    this->DeclareVectorOutputPort(kUseDefaultName, kSize,
+                                  &SparseSystem::CalcY0);
+    this->DeclareVectorOutputPort(kUseDefaultName, kSize,
+                                  &SparseSystem::CalcY1);
     this->DeclareAbstractOutputPort("port_42", 42, &SparseSystem::CalcNothing);
 
     this->DeclareContinuousState(kSize);
@@ -112,7 +110,7 @@ class SparseSystem : public LeafSystem<symbolic::Expression> {
     const Eigen::Vector2d f0(10.0, 11.0);
     const Vector2<symbolic::Expression> next_xd =
         A * xd + B1 * u0 + B2 * u1 + f0;
-    discrete_state->get_mutable_vector(0).SetFromVector(next_xd);
+    discrete_state->set_value(0, next_xd);
   }
 };
 

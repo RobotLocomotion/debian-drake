@@ -334,7 +334,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
             },
             py::arg("context"), py::arg("with_respect_to"), py::arg("frame_A"),
             py::arg("frame_E"),
-            cls_doc.CalcJacobianCenterOfMassTranslationalVelocity.doc)
+            cls_doc.CalcJacobianCenterOfMassTranslationalVelocity.doc_5args)
         .def("GetFreeBodyPose", &Class::GetFreeBodyPose, py::arg("context"),
             py::arg("body"), cls_doc.GetFreeBodyPose.doc)
         .def("SetFreeBodyPose",
@@ -542,7 +542,17 @@ void DoScalarDependentDefinitions(py::module m, T) {
               self->CalcMassMatrixViaInverseDynamics(context, &H);
               return H;
             },
-            py::arg("context"))
+            py::arg("context"), cls_doc.CalcMassMatrixViaInverseDynamics.doc)
+        .def(
+            "CalcMassMatrix",
+            [](const Class* self, const Context<T>& context) {
+              MatrixX<T> H;
+              const int n = self->num_velocities();
+              H.resize(n, n);
+              self->CalcMassMatrix(context, &H);
+              return H;
+            },
+            py::arg("context"), cls_doc.CalcMassMatrix.doc)
         .def(
             "CalcBiasSpatialAcceleration",
             [](const Class* self, const systems::Context<T>& context,
