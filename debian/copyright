@@ -206,10 +206,6 @@ Files: external/pycodestyle/*
 Copyright: TODO
 License: Expat
 
-Files: external/pycps/*
-Copyright: TODO
-License: LGPL-3+
-
 Files: external/qdldl/*
 Copyright: TODO
 License: Apache-2.0
