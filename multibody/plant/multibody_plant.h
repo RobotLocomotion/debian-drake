@@ -71,6 +71,7 @@ template <typename>
 class MultibodyPlantModelAttorney;
 template <typename>
 class MultibodyPlantDiscreteUpdateManagerAttorney;
+
 }  // namespace internal
 
 // TODO(amcastro-tri): Add a section on contact models in
@@ -79,18 +80,23 @@ class MultibodyPlantDiscreteUpdateManagerAttorney;
 enum class ContactModel {
   /// Contact forces are computed using the Hydroelastic model. Conctact between
   /// unsupported geometries will cause a runtime exception.
-  kHydroelasticsOnly,
+  kHydroelastic,
 
   /// Contact forces are computed using a point contact model, see @ref
   /// point_contact_approximation "Numerical Approximation of Point Contact".
-  kPointContactOnly,
+  kPoint,
 
   /// Contact forces are computed using the hydroelastic model, where possible.
   /// For most other unsupported colliding pairs, the point model from
-  /// kPointContactOnly is used. See
-  /// geometry::QueryObject:ComputeContactSurfacesWithFallback for more
+  /// kPoint is used. See
+  /// geometry::QueryObject::ComputeContactSurfacesWithFallback for more
   /// details.
-  kHydroelasticWithFallback
+  kHydroelasticWithFallback,
+
+  /// Legacy alias. TODO(jwnimmer-tri) Deprecate this constant.
+  kHydroelasticsOnly = kHydroelastic,
+  /// Legacy alias. TODO(jwnimmer-tri) Deprecate this constant.
+  kPointContactOnly = kPoint,
 };
 
 /// @cond
@@ -1591,7 +1597,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
 
   /// Sets the contact model to be used by `this` %MultibodyPlant, see
   /// ContactModel for available options.
-  /// The default contact model is ContactModel::kPointContactOnly.
+  /// The default contact model is ContactModel::kPoint.
   /// @throws std::exception iff called post-finalize.
   void set_contact_model(ContactModel model);
 
@@ -1751,17 +1757,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if `v_stiction` is non-positive.
   void set_stiction_tolerance(double v_stiction = 0.001) {
     friction_model_.set_stiction_tolerance(v_stiction);
-    // We allow calling this method post-finalize. Therefore, if the plant is
-    // modeled as a discrete system, we must update the solver's stiction
-    // parameter. Pre-Finalize the solver is not yet created and therefore we
-    // check for nullptr.
-    if (is_discrete() && tamsi_solver_ != nullptr) {
-      TamsiSolverParameters solver_parameters =
-          tamsi_solver_->get_solver_parameters();
-      solver_parameters.stiction_tolerance =
-          friction_model_.stiction_tolerance();
-      tamsi_solver_->set_solver_parameters(solver_parameters);
-    }
   }
   /// @} <!-- Contact modeling -->
 
@@ -1831,7 +1826,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// not correspond to the context for a multibody model, or if the length of
   /// `q_v` is not equal to `num_positions() + num_velocities()`.
   void SetPositionsAndVelocities(
-      systems::Context<T>* context, const VectorX<T>& q_v) const {
+      systems::Context<T>* context,
+      const Eigen::Ref<const VectorX<T>>& q_v) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(q_v.size() == (num_positions() + num_velocities()));
     internal_tree().GetMutablePositionsAndVelocities(context) = q_v;
@@ -1845,7 +1841,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// `num_positions(model_instance) + num_velocities(model_instance)`.
   void SetPositionsAndVelocities(
       systems::Context<T>* context, ModelInstanceIndex model_instance,
-      const VectorX<T>& q_v) const {
+      const Eigen::Ref<const VectorX<T>>& q_v) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(
         q_v.size() ==
@@ -1905,7 +1901,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   Eigen::VectorBlock<VectorX<T>> GetMutablePositions(
       const systems::Context<T>& context, systems::State<T>* state) const {
     this->ValidateContext(context);
-    DRAKE_ASSERT_VOID(CheckValidState(state));
+    this->ValidateCreatedForThisSystem(state);
     return internal_tree().get_mutable_positions(state);
   }
 
@@ -1914,7 +1910,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if `context` is nullptr, if `context` does not
   /// correspond to the Context for a multibody model, or if the length of `q`
   /// is not equal to `num_positions()`.
-  void SetPositions(systems::Context<T>* context, const VectorX<T>& q) const {
+  void SetPositions(systems::Context<T>* context,
+                    const Eigen::Ref<const VectorX<T>>& q) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(q.size() == num_positions());
     GetMutablePositions(context) = q;
@@ -1926,9 +1923,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// not correspond to the Context for a multibody model, if the model instance
   /// index is invalid, or if the length of `q_instance` is not equal to
   /// `num_positions(model_instance)`.
-  void SetPositions(
-      systems::Context<T>* context,
-      ModelInstanceIndex model_instance, const VectorX<T>& q_instance) const {
+  void SetPositions(systems::Context<T>* context,
+                    ModelInstanceIndex model_instance,
+                    const Eigen::Ref<const VectorX<T>>& q_instance) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(q_instance.size() == num_positions(model_instance));
     Eigen::VectorBlock<VectorX<T>> q = GetMutablePositions(context);
@@ -1945,10 +1942,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @pre `state` comes from this MultibodyPlant.
   void SetPositions(const systems::Context<T>& context,
                     systems::State<T>* state, ModelInstanceIndex model_instance,
-                    const VectorX<T>& q_instance) const {
+                    const Eigen::Ref<const VectorX<T>>& q_instance) const {
     this->ValidateContext(context);
+    this->ValidateCreatedForThisSystem(state);
     DRAKE_THROW_UNLESS(q_instance.size() == num_positions(model_instance));
-    CheckValidState(state);
     Eigen::VectorBlock<VectorX<T>> q = GetMutablePositions(context, state);
     internal_tree().SetPositionsInArray(model_instance, q_instance, &q);
   }
@@ -2005,7 +2002,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   Eigen::VectorBlock<VectorX<T>> GetMutableVelocities(
       const systems::Context<T>& context, systems::State<T>* state) const {
     this->ValidateContext(context);
-    DRAKE_ASSERT_VOID(CheckValidState(state));
+    this->ValidateCreatedForThisSystem(state);
     return internal_tree().get_mutable_velocities(state);
   }
 
@@ -2014,7 +2011,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if the `context` is nullptr, if the context does
   /// not correspond to the context for a multibody model, or if the length of
   /// `v` is not equal to `num_velocities()`.
-  void SetVelocities(systems::Context<T>* context, const VectorX<T>& v) const {
+  void SetVelocities(systems::Context<T>* context,
+                     const Eigen::Ref<const VectorX<T>>& v) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(v.size() == num_velocities());
     GetMutableVelocities(context) = v;
@@ -2026,9 +2024,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// not correspond to the Context for a multibody model, if the model instance
   /// index is invalid, or if the length of `v_instance` is not equal to
   /// `num_velocities(model_instance)`.
-  void SetVelocities(
-      systems::Context<T>* context,
-      ModelInstanceIndex model_instance, const VectorX<T>& v_instance) const {
+  void SetVelocities(systems::Context<T>* context,
+                     ModelInstanceIndex model_instance,
+                     const Eigen::Ref<const VectorX<T>>& v_instance) const {
     this->ValidateContext(context);
     DRAKE_THROW_UNLESS(v_instance.size() == num_velocities(model_instance));
     Eigen::VectorBlock<VectorX<T>> v = GetMutableVelocities(context);
@@ -2043,12 +2041,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// index is invalid, or if the length of `v_instance` is not equal to
   /// `num_velocities(model_instance)`.
   /// @pre `state` comes from this MultibodyPlant.
-  void SetVelocities(
-      const systems::Context<T>& context, systems::State<T>* state,
-      ModelInstanceIndex model_instance, const VectorX<T>& v_instance) const {
+  void SetVelocities(const systems::Context<T>& context,
+                     systems::State<T>* state,
+                     ModelInstanceIndex model_instance,
+                     const Eigen::Ref<const VectorX<T>>& v_instance) const {
     this->ValidateContext(context);
+    this->ValidateCreatedForThisSystem(state);
     DRAKE_THROW_UNLESS(v_instance.size() == num_velocities(model_instance));
-    CheckValidState(state);
     Eigen::VectorBlock<VectorX<T>> v = GetMutableVelocities(context, state);
     internal_tree().SetVelocitiesInArray(model_instance, v_instance, &v);
   }
@@ -2062,7 +2061,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                        systems::State<T>* state) const override {
     DRAKE_MBP_THROW_IF_NOT_FINALIZED();
     this->ValidateContext(context);
-    CheckValidState(state);
+    this->ValidateCreatedForThisSystem(state);
     internal_tree().SetDefaultState(context, state);
     for (const BodyIndex& index : GetFloatingBaseBodies()) {
       SetFreeBodyPose(
@@ -2082,7 +2081,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                       RandomGenerator* generator) const override {
     DRAKE_MBP_THROW_IF_NOT_FINALIZED();
     this->ValidateContext(context);
-    CheckValidState(state);
+    this->ValidateCreatedForThisSystem(state);
     internal_tree().SetRandomState(context, state, generator);
   }
 
@@ -2224,7 +2223,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const systems::Context<T>& context, systems::State<T>* state,
       const Body<T>& body, const math::RigidTransform<T>& X_WB) const {
     this->ValidateContext(context);
-    CheckValidState(state);
+    this->ValidateCreatedForThisSystem(state);
     internal_tree().SetFreeBodyPoseOrThrow(body, X_WB, context, state);
   }
 
@@ -2274,7 +2273,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const systems::Context<T>& context, systems::State<T>* state,
       const Body<T>& body, const SpatialVelocity<T>& V_WB) const {
     this->ValidateContext(context);
-    CheckValidState(state);
+    this->ValidateCreatedForThisSystem(state);
     internal_tree().SetFreeBodySpatialVelocityOrThrow(
         body, V_WB, context, state);
   }
@@ -2425,10 +2424,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @throws std::exception if called pre-finalize. See Finalize().
   const std::vector<geometry::PenetrationAsPointPair<T>>&
   EvalPointPairPenetrations(const systems::Context<T>& context) const {
+    // TODO(jwnimmer-tri) This function is too large to be inline.
+    // Move its definition to the cc file.
     DRAKE_MBP_THROW_IF_NOT_FINALIZED();
     this->ValidateContext(context);
     switch (contact_model_) {
-      case ContactModel::kPointContactOnly:
+      case ContactModel::kPoint:
         return this->get_cache_entry(cache_indexes_.point_pairs)
             .template Eval<std::vector<geometry::PenetrationAsPointPair<T>>>(
             context);
@@ -2698,8 +2699,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///   entries will be ordered by BodyIndex.
   /// @throws std::exception if A_WB_array is not of size `num_bodies()`.
   void CalcSpatialAccelerationsFromVdot(
-      const systems::Context<T>& context,
-      const VectorX<T>& known_vdot,
+      const systems::Context<T>& context, const VectorX<T>& known_vdot,
       std::vector<SpatialAcceleration<T>>* A_WB_array) const;
 
   /// Given the state of this model in `context` and a known vector
@@ -3483,6 +3483,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return internal_tree().HasBodyNamed(name);
   }
 
+  /// @returns The total number of bodies (across all model instances) with the
+  /// given name.
+  int NumBodiesWithName(std::string_view name) const {
+    return internal_tree().NumBodiesWithName(name);
+  }
+
   /// @returns `true` if a body named `name` was added to the %MultibodyPlant
   /// in @p model_instance.
   /// @see AddRigidBody().
@@ -4015,7 +4021,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     systems::CacheIndex point_pairs;
     systems::CacheIndex spatial_contact_forces_continuous;
     systems::CacheIndex contact_solver_results;
+    systems::CacheIndex contact_solver_scratch;
     systems::CacheIndex discrete_contact_pairs;
+    systems::CacheIndex joint_locking_data;
   };
 
   // Constructor to bridge testing from MultibodyTree to MultibodyPlant.
@@ -4113,9 +4121,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     return prop->GetProperty<CoulombFriction<double>>(
         geometry::internal::kMaterialGroup, geometry::internal::kFriction);
   }
-
-  // Checks that the provided State is consistent with this plant.
-  void CheckValidState(const systems::State<T>*) const;
 
   // Helper method to apply collision filters based on body-adjacency. By
   // default, we don't consider collisions between geometries affixed to
@@ -4220,6 +4225,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // During the time span dt the problem data M, Jn, Jt and minus_tau, are
   // approximated to be constant, a first order approximation.
   TamsiSolverResult SolveUsingSubStepping(
+      TamsiSolver<T>* tamsi_solver,
       int num_substeps, const MatrixX<T>& M0, const MatrixX<T>& Jn,
       const MatrixX<T>& Jt, const VectorX<T>& minus_tau,
       const VectorX<T>& stiffness, const VectorX<T>& damping,
@@ -4233,12 +4239,29 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       const drake::systems::Context<T>& context0,
       contact_solvers::internal::ContactSolverResults<T>* results) const;
 
+
   // Eval version of the method CalcContactSolverResults().
   const contact_solvers::internal::ContactSolverResults<T>&
   EvalContactSolverResults(const systems::Context<T>& context) const {
     return this->get_cache_entry(cache_indexes_.contact_solver_results)
         .template Eval<contact_solvers::internal::ContactSolverResults<T>>(
             context);
+  }
+
+
+  // Computes the array of indices of velocities that are not locked in the
+  // current configuration. The resulting index values in @p
+  // unlocked_velocity_indices will be in ascending order, in the range [0,
+  // num_velocities()), with the indices of the locked velocities removed.
+  void CalcJointLockingIndices(
+      const systems::Context<T>& context,
+      std::vector<int>* unlocked_velocity_indices) const;
+
+  // Eval version of the method CalcJointLockingIndices().
+  const std::vector<int>& EvalJointLockingIndices(
+      const systems::Context<T>& context) const {
+    return this->get_cache_entry(cache_indexes_.joint_locking_data)
+        .template Eval<std::vector<int>>(context);
   }
 
   // Computes the vector of ContactSurfaces for hydroelastic contact.
@@ -4249,6 +4272,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Eval version of the method CalcContactSurfaces().
   const std::vector<geometry::ContactSurface<T>>& EvalContactSurfaces(
       const systems::Context<T>& context) const {
+    // TODO(jwnimmer-tri) This function is too large to be inline.
+    // Move its definition to the cc file.
     this->ValidateContext(context);
     switch (contact_model_) {
       case ContactModel::kHydroelasticWithFallback: {
@@ -4258,7 +4283,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                     context);
         return data.contact_surfaces;
       }
-      case ContactModel::kHydroelasticsOnly:
+      case ContactModel::kHydroelastic:
         return this->get_cache_entry(cache_indexes_.contact_surfaces)
             .template Eval<std::vector<geometry::ContactSurface<T>>>(context);
       default:
@@ -4605,6 +4630,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Helper to invoke our TamsiSolver. This method and `CallContactSolver()` are
   // disjoint methods. One should only use one or the other, but not both.
   void CallTamsiSolver(
+      TamsiSolver<T>* tamsi_solver,
       const T& time0, const VectorX<T>& v0, const MatrixX<T>& M0,
       const VectorX<T>& minus_tau, const VectorX<T>& fn0, const MatrixX<T>& Jn,
       const MatrixX<T>& Jt, const VectorX<T>& stiffness,
@@ -4768,7 +4794,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::vector<CoulombFriction<double>> default_coulomb_friction_;
 
   // The model used by the plant to compute contact forces.
-  ContactModel contact_model_{ContactModel::kPointContactOnly};
+  ContactModel contact_model_{ContactModel::kPoint};
 
   bool use_low_resolution_contact_surface_{false};
 
@@ -4841,9 +4867,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // time_step_ corresponds to the period of those updates. Otherwise, if the
   // plant is modeled as a continuous system, it is exactly zero.
   double time_step_{0};
-
-  // The solver used when the plant is modeled as a discrete system.
-  std::unique_ptr<TamsiSolver<T>> tamsi_solver_;
 
   // TODO(xuchenhan-tri): Entirely remove the contact_solver_ back door by the
   // newer design using DiscreteUpdateManager. When not the nullptr, this is the

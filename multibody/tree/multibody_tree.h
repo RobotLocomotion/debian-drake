@@ -755,6 +755,9 @@ class MultibodyTree {
   // the model.
   // @{
 
+  // See MultibodyPlant method.
+  int NumBodiesWithName(std::string_view name) const;
+
   // @returns `true` if a body named `name` was added to the model.
   // @see AddRigidBody().
   //
@@ -2327,7 +2330,7 @@ class MultibodyTree {
   // Returns the MultibodyTreeSystem that owns this MultibodyTree.
   // @pre There is an owning MultibodyTreeSystem.
   const MultibodyTreeSystem<T>& tree_system() const {
-    DRAKE_DEMAND(tree_system_ != nullptr);
+    DRAKE_ASSERT(tree_system_ != nullptr);
     return *tree_system_;
   }
 
@@ -2389,9 +2392,11 @@ class MultibodyTree {
   Eigen::VectorBlock<VectorX<T>> get_mutable_discrete_state_vector(
       systems::State<T>* state) const;
 
+  // @pre the VectorBase is a BasicVector.
   Eigen::VectorBlock<const VectorX<T>> extract_qv_from_continuous(
       const systems::VectorBase<T>& continuous_qvz) const;
 
+  // @pre the VectorBase is non-null and is a BasicVector.
   Eigen::VectorBlock<VectorX<T>> extract_mutable_qv_from_continuous(
       systems::VectorBase<T>* continuous_qvz) const;
 
