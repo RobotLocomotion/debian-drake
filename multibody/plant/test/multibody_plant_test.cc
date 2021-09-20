@@ -220,6 +220,9 @@ GTEST_TEST(MultibodyPlant, SimpleModelCreation) {
   EXPECT_TRUE(plant->HasBodyNamed(parameters.link1_name()));
   EXPECT_TRUE(plant->HasBodyNamed(parameters.link2_name()));
   EXPECT_FALSE(plant->HasBodyNamed(kInvalidName));
+  // Indicator that the plant is calling the tree's method correctly.
+  EXPECT_EQ(plant->NumBodiesWithName(parameters.link1_name()), 1);
+  EXPECT_EQ(plant->NumBodiesWithName(kInvalidName), 0);
 
   EXPECT_TRUE(plant->HasJointNamed(parameters.shoulder_joint_name()));
   EXPECT_TRUE(plant->HasJointNamed(parameters.elbow_joint_name()));
@@ -2704,6 +2707,17 @@ TEST_P(KukaArmTest, StateAccess) {
   EXPECT_EQ(xc, VectorX<double>::Zero(plant_->num_multibody_states()));
   plant_->SetPositionsAndVelocities(context_.get(), xc_expected);
   EXPECT_EQ(xc, xc_expected);
+
+  // Ensure that call sites accepting a VectorBlock do not allocate.
+  auto q_block = xc_expected.head(plant_->num_positions());
+  auto v_block = xc_expected.tail(plant_->num_velocities());
+  auto qv_block = xc_expected.head(plant_->num_multibody_states());
+  {
+    drake::test::LimitMalloc guard({.max_num_allocations = 0});
+    plant_->SetPositions(context_.get(), q_block);
+    plant_->SetVelocities(context_.get(), v_block);
+    plant_->SetPositionsAndVelocities(context_.get(), qv_block);
+  }
 }
 
 TEST_P(KukaArmTest, InstanceStateAccess) {
@@ -2772,6 +2786,21 @@ TEST_P(KukaArmTest, InstanceStateAccess) {
   plant_->SetPositionsAndVelocities(context_.get(), arm2, x);
   EXPECT_EQ(plant_->GetPositionsAndVelocities(*context_, arm2), x);
   EXPECT_EQ(plant_->GetPositionsAndVelocities(*context_, arm1).norm(), 0);
+
+  // Ensure that call sites accepting a VectorBlock do not allocate.
+  auto q_block = q.head(plant_->num_positions(arm2));
+  auto v_block = qd.head(plant_->num_velocities(arm2));
+  auto qv_block = x.head(q.size() + qd.size());
+  {
+    drake::test::LimitMalloc guard({.max_num_allocations = 0});
+    plant_->SetPositions(context_.get(), arm2, q_block);
+    plant_->SetPositions(*context_, &context_->get_mutable_state(),
+                         arm2, q_block);
+    plant_->SetVelocities(context_.get(), arm2, v_block);
+    plant_->SetVelocities(*context_, &context_->get_mutable_state(),
+                          arm2, v_block);
+    plant_->SetPositionsAndVelocities(context_.get(), arm2, qv_block);
+  }
 }
 
 // Verifies we instantiated an appropriate MultibodyPlant model based on the

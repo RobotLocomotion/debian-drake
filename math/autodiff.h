@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 
 #include "drake/common/autodiff.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/common/unused.h"
 
 namespace drake {
@@ -69,8 +70,10 @@ DiscardGradient(const Eigen::MatrixBase<Derived>& matrix) {
   return matrix;
 }
 
-/// @see DiscardGradient().
 template <typename _Scalar, int _Dim, int _Mode, int _Options>
+DRAKE_DEPRECATED("2021-12-01",
+    "Apparently unused. File a Drake issue on GitHub"
+    " if you need this specialization.")
 typename std::enable_if_t<
     !std::is_same_v<_Scalar, double>,
     Eigen::Transform<typename _Scalar::Scalar, _Dim, _Mode, _Options>>
@@ -80,8 +83,10 @@ DiscardGradient(const Eigen::Transform<_Scalar, _Dim, _Mode, _Options>&
       autoDiffToValueMatrix(auto_diff_transform.matrix()));
 }
 
-/// @see DiscardGradient().
 template <typename _Scalar, int _Dim, int _Mode, int _Options>
+DRAKE_DEPRECATED("2021-12-01",
+    "Apparently unused. File a Drake issue on GitHub"
+    " if you need this specialization.")
 typename std::enable_if_t<std::is_same_v<_Scalar, double>,
                           const Eigen::Transform<_Scalar, _Dim, _Mode,
     _Options>&>
@@ -169,6 +174,8 @@ AutoDiffMatrixType<Derived, Nq> initializeAutoDiff(
   return ret;
 }
 
+// TODO(sherm1) DRAKE_DEPRECATED("2021-12-01") Remove this internal:: block when
+//  resizeDerivativesToMatchScalar() below is removed.
 namespace internal {
 template <typename Derived, typename Scalar>
 struct ResizeDerivativesToMatchScalarImpl {
@@ -206,6 +213,8 @@ struct ResizeDerivativesToMatchScalarImpl<Derived,
  * \param scalar scalar to match the derivative size vector against.
  */
 template <typename Derived>
+DRAKE_DEPRECATED("2021-12-01",
+    "Apparently unused. File a Drake issue on GitHub if you need this method.")
 // TODO(#2274) Fix NOLINTNEXTLINE(runtime/references).
 void resizeDerivativesToMatchScalar(Eigen::MatrixBase<Derived>& mat,
                                     const typename Derived::Scalar& scalar) {

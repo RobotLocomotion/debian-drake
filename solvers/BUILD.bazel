@@ -112,6 +112,7 @@ drake_cc_library(
         ":clp_solver",
         ":csdp_solver",
         ":equality_constrained_qp_solver",
+        ":get_program_type",
         ":gurobi_solver",
         ":ipopt_solver",
         ":linear_system_solver",
@@ -1326,6 +1327,7 @@ drake_cc_googletest(
         ":generic_trivial_cost",
         ":ibex_solver",
         ":mathematical_program",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
