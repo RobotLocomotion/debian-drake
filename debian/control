@@ -1,6 +1,6 @@
 Source: drake
 Maintainer: Drake Development Team <drake-users@mit.edu>
-Uploaders: Jamie Snape <jamie.snape@kitware.com>
+Uploaders: Betsy McPhail <betsy.mcphail@kitware.com>
 Section: libdevel
 Priority: optional
 Build-Depends: bazel,
@@ -41,6 +41,7 @@ Build-Depends: bazel,
                libldl2,
                liblz4-dev,
                liblzma-dev,
+               libmsgpack-dev,
                libmumps-seq-dev,
                libnetcdf13,
                libnlopt-dev,
@@ -63,6 +64,8 @@ Build-Depends: bazel,
                libxml2,
                libxt6,
                libyaml-cpp-dev,
+               ocl-icd-opencl-dev,
+               opencl-headers,
                openssh-client,
                patch,
                patchelf,
@@ -73,6 +76,7 @@ Build-Depends: bazel,
                python3-lxml,
                python3-matplotlib,
                python3-numpy,
+               python3-pil,
                python3-pydot,
                python3-scipy,
                python3-semantic-version,

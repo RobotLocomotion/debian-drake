@@ -210,10 +210,6 @@ Files: external/pycodestyle/*
 Copyright: TODO
 License: Expat
 
-Files: external/pycps/*
-Copyright: TODO
-License: LGPL-3+
-
 Files: external/pygame_py/*
 Copyright: TODO
 License: CC0-1.0 and Expat and LGPL-2+ and LGPL-2.1+ and OFL-1.1 and Python-2
