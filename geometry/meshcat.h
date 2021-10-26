@@ -8,9 +8,12 @@
 #include <Eigen/Core>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/geometry/meshcat_animation.h"
 #include "drake/geometry/rgba.h"
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
+// TODO(russt): Move point_cloud.h to a more central location.
+#include "drake/perception/point_cloud.h"
 
 namespace drake {
 namespace geometry {
@@ -107,11 +110,30 @@ class Meshcat {
               See @ref meshcat_path "Meshcat paths" for the semantics.
   @param shape a Shape that specifies the geometry of the object.
   @param rgba an Rgba that specifies the (solid) color of the object.
+  @pydrake_mkdoc_identifier{shape}
   */
   void SetObject(std::string_view path, const Shape& shape,
                  const Rgba& rgba = Rgba(.9, .9, .9, 1.));
 
   // TODO(russt): SetObject with texture map.
+
+  /** Sets the "object" at a given `path` in the scene tree to be
+  `point_cloud`.  Note that `path`="/foo" will always set an object in the tree
+  at "/foo/<object>".  See @ref meshcat_path.  Any objects previously set at
+  this `path` will be replaced.
+  @param path a "/"-delimited string indicating the path in the scene tree. See
+              @ref meshcat_path "Meshcat paths" for the semantics.
+  @param point_cloud a perception::PointCloud; if `point_cloud.has_rgbs()` is
+                     true, then meshcat will render the colored points.
+  @param point_size is the size of each rendered point.
+  @param rgba is the default color, which is only used if
+              `point_cloud.has_rgbs() == false`.
+  @pydrake_mkdoc_identifier{cloud}
+  */
+  void SetObject(std::string_view path,
+                 const perception::PointCloud& point_cloud,
+                 double point_size = 0.001,
+                 const Rgba& rgba = Rgba(.9, .9, .9, 1.));
 
   // TODO(russt): Provide a more general SetObject(std::string_view path,
   // msgpack::object object) that would allow users to pass through anything
@@ -217,10 +239,28 @@ class Meshcat {
   */
   void SetProperty(std::string_view path, std::string property, double value);
 
+  /** Sets a single named property of the object at the given path. For example,
+  @verbatim
+  meshcat.SetProperty("box", "position", [1.0, 0.0, 0.0]);
+  @endverbatim
+  See @ref meshcat_path "Meshcat paths" for more details about these properties
+  and how to address them.
+
+  @param path a "/"-delimited string indicating the path in the scene tree.
+              See @ref meshcat_path for the semantics.
+  @param property the string name of the property to set
+  @param value the new value.
+
+  @pydrake_mkdoc_identifier{vector_double}
+  */
   void SetProperty(std::string_view path, std::string property,
                    const std::vector<double>& value);
 
-  // TODO(russt): Implement SetAnimation().
+  // TODO(russt): Support multiple animations, by name.  Currently "default" is
+  // hard-coded in the meshcat javascript.
+  /** Sets the MeshcatAnimation, which creates a slider interface element to
+  play/pause/rewind through a series of animation frames in the visualizer. */
+  void SetAnimation(const MeshcatAnimation& animation);
 
   /** @name Meshcat Controls
    Meshcat "Controls" are user interface elements in the browser.  These

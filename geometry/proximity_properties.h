@@ -31,7 +31,8 @@ namespace internal {
 //@{
 
 extern const char* const kMaterialGroup;   ///< The contact material group name.
-extern const char* const kElastic;         ///< Elastic modulus property name.
+extern const char* const kElastic;         ///< Hydroelastic modulus property
+                                           ///< name.
 extern const char* const kFriction;        ///< Friction coefficients property
                                            ///< name.
 extern const char* const kHcDissipation;   ///< Hunt-Crossley dissipation
@@ -104,7 +105,7 @@ std::ostream& operator<<(std::ostream& out, const HydroelasticType& type);
  * `point_stiffness`.
  *
  * These functions will throw an error if:
- * - `elastic_modulus` is not positive
+ * - `hydroelastic_modulus` is not positive
  * - `dissipation` is negative
  * - `point_stiffness` is not positive
  * - Any of the contact material properties have already been defined in
@@ -117,7 +118,7 @@ std::ostream& operator<<(std::ostream& out, const HydroelasticType& type);
  *                        "Contact Material Utility Functions".
  */
 void AddContactMaterial(
-    const std::optional<double>& elastic_modulus,
+    const std::optional<double>& hydroelastic_modulus,
     const std::optional<double>& dissipation,
     const std::optional<double>& point_stiffness,
     const std::optional<multibody::CoulombFriction<double>>& friction,
@@ -128,7 +129,7 @@ void AddContactMaterial(
  * argument for `point_stiffness` rather than this one.
  */
 void AddContactMaterial(
-    const std::optional<double>& elastic_modulus,
+    const std::optional<double>& hydroelastic_modulus,
     const std::optional<double>& dissipation,
     const std::optional<multibody::CoulombFriction<double>>& friction,
     ProximityProperties* properties);
@@ -139,9 +140,12 @@ void AddContactMaterial(
 
  @param resolution_hint       If the geometry is to be tessellated, it is the
                               parameter that guides the level of mesh
-                              refinement. See @ref MODULE_NOT_WRITTEN_YET. This
-                              will be ignored for geometry types that don't
-                              require tessellation.
+                              refinement. It has length units (in meters) and
+                              roughly corresponds to a typical edge length in
+                              the resulting mesh.
+                              See @ref MODULE_NOT_WRITTEN_YET. This will be
+                              ignored for geometry types that don't require
+                              tessellation.
  @param[in,out] properties    The properties will be added to this property set.
  @throws std::exception       If `properties` already has properties with the
                               names that this function would need to add.
@@ -163,8 +167,10 @@ void AddRigidHydroelasticProperties(ProximityProperties* properties);
 
  @param resolution_hint       If the geometry is to be tessellated, it is the
                               parameter that guides the level of mesh
-                              refinement. This will be ignored for geometry
-                              types that don't require tessellation.
+                              refinement. It has length units (in meters) and
+                              roughly corresponds to a typical edge length in
+                              the resulting mesh. This will be ignored for
+                              geometry types that don't require tessellation.
  @param[in,out] properties    The properties will be added to this property set.
  @throws std::exception       If `properties` already has properties with the
                               names that this function would need to add.

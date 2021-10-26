@@ -83,15 +83,13 @@ namespace internal {
 */
 template <typename T>
 void ConstructTriangleHalfspaceIntersectionPolygon(
-    const SurfaceMesh<double>& mesh_F, SurfaceFaceIndex tri_index,
+    const SurfaceMesh<double>& mesh_F, int tri_index,
     const PosedHalfSpace<T>& half_space_F, const math::RigidTransform<T>& X_WF,
     ContactPolygonRepresentation representation,
-    std::vector<SurfaceVertex<T>>* new_vertices_W,
+    std::vector<Vector3<T>>* new_vertices_W,
     std::vector<SurfaceFace>* new_faces,
-    std::unordered_map<SurfaceVertexIndex, SurfaceVertexIndex>*
-        vertices_to_newly_created_vertices,
-    std::unordered_map<SortedPair<SurfaceVertexIndex>, SurfaceVertexIndex>*
-        edges_to_newly_created_vertices);
+    std::unordered_map<int, int>* vertices_to_newly_created_vertices,
+    std::unordered_map<SortedPair<int>, int>* edges_to_newly_created_vertices);
 
 /*
  Computes a triangular surface mesh by intersecting a half space with a set of
@@ -126,8 +124,7 @@ template <typename T>
 std::unique_ptr<SurfaceMesh<T>>
 ConstructSurfaceMeshFromMeshHalfspaceIntersection(
     const SurfaceMesh<double>& input_mesh_F,
-    const PosedHalfSpace<T>& half_space_F,
-    const std::vector<SurfaceFaceIndex>& tri_indices,
+    const PosedHalfSpace<T>& half_space_F, const std::vector<int>& tri_indices,
     const math::RigidTransform<T>& X_WF,
     ContactPolygonRepresentation representation);
 
@@ -144,7 +141,7 @@ ConstructSurfaceMeshFromMeshHalfspaceIntersection(
                             canonical frame) and the world frame W.
  @param[in] pressure_scale  A linear scale factor that transforms penetration
                             depth into pressure values. Generally,
-                            `pressure_scale = elastic_modulus / thickness`.
+                            `pressure_scale = hydroelastic_modulus / thickness`.
  @param[in] id_R            The id of the rigid mesh.
  @param[in] mesh_R          The rigid mesh. The field mesh vertices are measured
                             and expressed in Frame R.

@@ -568,7 +568,6 @@ drake_cc_library(
         ":volume_mesh",
         "//common:sorted_pair",
         "//geometry:geometry_ids",
-        "//geometry:geometry_index",
         "//geometry:shape_specification",
         "@fcl",
         "@fmt",
@@ -591,7 +590,6 @@ drake_cc_library(
     hdrs = ["surface_mesh.h"],
     deps = [
         ":mesh_traits",
-        "//common:type_safe_index",
         "//math:geometric_transform",
     ],
 )
@@ -613,7 +611,6 @@ drake_cc_library(
     deps = [
         ":mesh_traits",
         "//common:default_scalars",
-        "//common:type_safe_index",
         "//geometry:geometry_ids",
     ],
 )
