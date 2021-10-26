@@ -293,8 +293,7 @@ void ParseJointLimits(XMLElement* node, double* lower, double* upper,
   }
 }
 
-void ParseJointDynamics(const std::string& joint_name,
-                        XMLElement* node, double* damping) {
+void ParseJointDynamics(XMLElement* node, double* damping) {
   *damping = 0.0;
   double coulomb_friction = 0.0;
   double coulomb_window = std::numeric_limits<double>::epsilon();
@@ -304,14 +303,18 @@ void ParseJointDynamics(const std::string& joint_name,
     ParseScalarAttribute(dynamics_node, "damping", damping);
     if (ParseScalarAttribute(dynamics_node, "friction", &coulomb_friction) &&
         coulomb_friction != 0.0) {
-      drake::log()->warn("Joint {} specifies non-zero friction, which is "
-                         "not supported by MultibodyPlant", joint_name);
+      static const logging::Warn log_once(
+          "At least one of your URDF files has specified a non-zero value for "
+          "the 'friction' attribute of a joint/dynamics tag. MultibodyPlant "
+          "does not currently support non-zero joint friction.");
     }
     if (ParseScalarAttribute(dynamics_node, "coulomb_window",
                              &coulomb_window) &&
         coulomb_window != std::numeric_limits<double>::epsilon()) {
-      drake::log()->warn("Joint {} specifies non-zero coulomb_window, which is "
-                         "not supported by MultibodyPlant", joint_name);
+      static const logging::Warn log_once(
+          "At least one of your URDF files has specified a value for  the "
+          "'coulomb_window' attribute of a <joint> tag. Drake no longer makes "
+          "use of that attribute and all instances will be ignored.");
     }
   }
 }
@@ -405,7 +408,7 @@ void ParseJoint(ModelInstanceIndex model_instance,
   if (type.compare("revolute") == 0 || type.compare("continuous") == 0) {
     throw_on_custom_joint(false);
     ParseJointLimits(node, &lower, &upper, &velocity, &acceleration, &effort);
-    ParseJointDynamics(name, node, &damping);
+    ParseJointDynamics(node, &damping);
     const JointIndex index = plant->AddJoint<RevoluteJoint>(
         name, parent_body, X_PJ,
         child_body, std::nullopt, axis, lower, upper, damping).index();
@@ -421,7 +424,7 @@ void ParseJoint(ModelInstanceIndex model_instance,
   } else if (type.compare("prismatic") == 0) {
     throw_on_custom_joint(false);
     ParseJointLimits(node, &lower, &upper, &velocity, &acceleration, &effort);
-    ParseJointDynamics(name, node, &damping);
+    ParseJointDynamics(node, &damping);
     const JointIndex index = plant->AddJoint<PrismaticJoint>(
         name, parent_body, X_PJ,
         child_body, std::nullopt, axis, lower, upper, damping).index();
@@ -436,7 +439,7 @@ void ParseJoint(ModelInstanceIndex model_instance,
                        "free body.", name, child_name);
   } else if (type.compare("ball") == 0) {
     throw_on_custom_joint(true);
-    ParseJointDynamics(name, node, &damping);
+    ParseJointDynamics(node, &damping);
     plant->AddJoint<BallRpyJoint>(name, parent_body, X_PJ,
                                   child_body, std::nullopt, damping);
   } else if (type.compare("planar") == 0) {
@@ -450,7 +453,7 @@ void ParseJoint(ModelInstanceIndex model_instance,
                                  child_body, std::nullopt, damping_vec);
   } else if (type.compare("universal") == 0) {
     throw_on_custom_joint(true);
-    ParseJointDynamics(name, node, &damping);
+    ParseJointDynamics(node, &damping);
     plant->AddJoint<UniversalJoint>(name, parent_body, X_PJ,
                                     child_body, std::nullopt, damping);
   } else {
@@ -484,9 +487,10 @@ void ParseTransmission(
   // print a warning and then abort this method call since only simple
   // transmissions are supported at this time.
   if (type.find("SimpleTransmission") == std::string::npos) {
-    drake::log()->warn(
-        "Only SimpleTransmissions are supported right now.  This element "
-        "will be skipped.");
+    static const logging::Warn log_once(
+        "At least one of your URDF files has <transmission> type that isn't "
+        "'SimpleTransmission'. Drake only supports 'SimpleTransmission'; all "
+        "other transmission types will be ignored.");
     return;
   }
 
@@ -603,7 +607,9 @@ void ParseFrame(ModelInstanceIndex model_instance,
       name, body.body_frame(), X_BF));
 }
 
-void ParseBushing(XMLElement* node, MultibodyPlant<double>* plant) {
+void ParseBushing(ModelInstanceIndex model_instance,
+                  XMLElement* node,
+                  MultibodyPlant<double>* plant) {
   // Functor to read a child element with a vector valued `value` attribute
   // Throws an error if unable to find the tag or if the value attribute is
   // improperly formed.
@@ -630,19 +636,20 @@ void ParseBushing(XMLElement* node, MultibodyPlant<double>* plant) {
   // Functor to read a child element with a string valued `name` attribute.
   // Throws an error if unable to find the tag of if the name attribute is
   // improperly formed.
-  auto read_frame = [node,
+  auto read_frame = [model_instance,
+                     node,
                      plant](const char* element_name) -> const Frame<double>& {
     XMLElement* value_node = node->FirstChildElement(element_name);
 
     if (value_node != nullptr) {
       std::string frame_name;
       if (ParseStringAttribute(value_node, "name", &frame_name)) {
-        if (!plant->HasFrameNamed(frame_name)) {
+        if (!plant->HasFrameNamed(frame_name, model_instance)) {
           throw std::runtime_error(fmt::format(
               "Frame: {} specified for <{}> does not exist in the model.",
               frame_name, element_name));
         }
-        return plant->GetFrameByName(frame_name);
+        return plant->GetFrameByName(frame_name, model_instance);
 
       } else {
         throw std::runtime_error(
@@ -753,7 +760,7 @@ ModelInstanceIndex ParseUrdf(
            node->FirstChildElement("drake:linear_bushing_rpy");
        bushing_node; bushing_node = bushing_node->NextSiblingElement(
                          "drake:linear_bushing_rpy")) {
-    ParseBushing(bushing_node, plant);
+    ParseBushing(model_instance, bushing_node, plant);
   }
 
   return model_instance;

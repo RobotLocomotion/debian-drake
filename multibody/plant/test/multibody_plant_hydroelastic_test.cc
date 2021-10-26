@@ -73,7 +73,7 @@ class HydroelasticModelTests : public ::testing::Test {
 
     // Connect visualizer. Useful for when this test is used for debugging.
     drake::geometry::DrakeVisualizerd::AddToBuilder(&builder, *scene_graph_);
-    ConnectContactResultsToDrakeVisualizer(&builder, *plant_);
+    ConnectContactResultsToDrakeVisualizer(&builder, *plant_, *scene_graph_);
 
     diagram_ = builder.Build();
 
@@ -102,7 +102,7 @@ class HydroelasticModelTests : public ::testing::Test {
   }
 
   const RigidBody<double>& AddObject(MultibodyPlant<double>* plant,
-                                     double radius, double elastic_modulus,
+                                     double radius, double hydroelastic_modulus,
                                      double dissipation,
                                      double friction_coefficient) {
     // Inertial properties are only needed when verifying accelerations since
@@ -126,7 +126,7 @@ class HydroelasticModelTests : public ::testing::Test {
     // This should produce a level-2 refinement (two steps beyond octahedron).
     geometry::AddSoftHydroelasticProperties(radius / 2, &props);
     geometry::AddContactMaterial(
-        elastic_modulus, dissipation,
+        hydroelastic_modulus, dissipation,
         CoulombFriction<double>(friction_coefficient, friction_coefficient),
         &props);
     plant->RegisterCollisionGeometry(body, X_BG, shape, "BodyCollisionGeometry",
