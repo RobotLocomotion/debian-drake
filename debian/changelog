@@ -1,3 +1,9 @@
+drake (0.36.0-1) focal; urgency=medium
+
+  * New upstream version
+
+ -- Drake Development Team <drake-users@mit.edu>  Wed, 24 Nov 2021 16:56:09 -0400
+
 drake (0.35.0-1) focal; urgency=medium
 
   * New upstream version
