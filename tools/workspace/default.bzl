@@ -14,6 +14,7 @@ load("@drake//tools/workspace/clp:repository.bzl", "clp_repository")
 load("@drake//tools/workspace/com_jidesoft_jide_oss:repository.bzl", "com_jidesoft_jide_oss_repository")  # noqa
 load("@drake//tools/workspace/common_robotics_utilities:repository.bzl", "common_robotics_utilities_repository")  # noqa
 load("@drake//tools/workspace/commons_io:repository.bzl", "commons_io_repository")  # noqa
+load("@drake//tools/workspace/conex:repository.bzl", "conex_repository")
 load("@drake//tools/workspace/csdp:repository.bzl", "csdp_repository")
 load("@drake//tools/workspace/double_conversion:repository.bzl", "double_conversion_repository")  # noqa
 load("@drake//tools/workspace/doxygen:repository.bzl", "doxygen_repository")
@@ -38,7 +39,6 @@ load("@drake//tools/workspace/ignition_math:repository.bzl", "ignition_math_repo
 load("@drake//tools/workspace/ignition_utils:repository.bzl", "ignition_utils_repository")  # noqa
 load("@drake//tools/workspace/intel_realsense_ros:repository.bzl", "intel_realsense_ros_repository")  # noqa
 load("@drake//tools/workspace/ipopt:repository.bzl", "ipopt_repository")
-load("@drake//tools/workspace/jsoncpp:repository.bzl", "jsoncpp_repository")
 load("@drake//tools/workspace/lapack:repository.bzl", "lapack_repository")
 load("@drake//tools/workspace/lcm:repository.bzl", "lcm_repository")
 load("@drake//tools/workspace/libblas:repository.bzl", "libblas_repository")
@@ -61,6 +61,7 @@ load("@drake//tools/workspace/opengl:repository.bzl", "opengl_repository")
 load("@drake//tools/workspace/optitrack_driver:repository.bzl", "optitrack_driver_repository")  # noqa
 load("@drake//tools/workspace/org_apache_xmlgraphics_commons:repository.bzl", "org_apache_xmlgraphics_commons_repository")  # noqa
 load("@drake//tools/workspace/osqp:repository.bzl", "osqp_repository")
+load("@drake//tools/workspace/petsc:repository.bzl", "petsc_repository")
 load("@drake//tools/workspace/picosat:repository.bzl", "picosat_repository")
 load("@drake//tools/workspace/pybind11:repository.bzl", "pybind11_repository")
 load("@drake//tools/workspace/pycodestyle:repository.bzl", "pycodestyle_repository")  # noqa
@@ -123,6 +124,8 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         common_robotics_utilities_repository(name = "common_robotics_utilities", mirrors = mirrors)  # noqa
     if "commons_io" not in excludes:
         commons_io_repository(name = "commons_io", mirrors = mirrors)
+    if "conex" not in excludes:
+        conex_repository(name = "conex", mirrors = mirrors)
     if "csdp" not in excludes:
         csdp_repository(name = "csdp", mirrors = mirrors)
     if "double_conversion" not in excludes:
@@ -173,8 +176,6 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         intel_realsense_ros_repository(name = "intel_realsense_ros", mirrors = mirrors)  # noqa
     if "ipopt" not in excludes:
         ipopt_repository(name = "ipopt")
-    if "jsoncpp" not in excludes:
-        jsoncpp_repository(name = "jsoncpp")
     if "lapack" not in excludes:
         lapack_repository(name = "lapack")
     if "lcm" not in excludes:
@@ -219,6 +220,8 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         org_apache_xmlgraphics_commons_repository(name = "org_apache_xmlgraphics_commons", mirrors = mirrors)  # noqa
     if "osqp" not in excludes:
         osqp_repository(name = "osqp", mirrors = mirrors)
+    if "petsc" not in excludes:
+        petsc_repository(name = "petsc", mirrors = mirrors)
     if "picosat" not in excludes:
         picosat_repository(name = "picosat", mirrors = mirrors)
     if "pybind11" not in excludes:

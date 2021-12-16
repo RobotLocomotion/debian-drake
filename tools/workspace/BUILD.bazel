@@ -56,6 +56,7 @@ _DRAKE_EXTERNAL_PACKAGE_INSTALLS = ["@%s//:install" % p for p in [
     "lcm",
     "meshcat",
     "meshcat_python",
+    "petsc",
     "pybind11",
     "sdformat",
     "spdlog",
@@ -64,6 +65,7 @@ _DRAKE_EXTERNAL_PACKAGE_INSTALLS = ["@%s//:install" % p for p in [
     "uwebsockets",
     "vtk",
 ]] + ["//tools/workspace/%s:install" % p for p in [
+    "conex",
     "cds",
     "drake_visualizer",
     "dreal",
