@@ -307,42 +307,17 @@ class QueryObject {
    *poses*. We cannot differentiate w.r.t. geometric properties (e.g., radius,
    length, etc.)
 
+   @param representation  Controls the mesh representation of the contact
+                          surface. See
+                          @ref contact_surface_discrete_representation
+                          "contact surface representation" for more details.
+
    @returns A vector populated with all detected intersections characterized as
             contact surfaces. The ordering of the results is guaranteed to be
             consistent -- for fixed geometry poses, the results will remain
             the same.  */
-  std::vector<ContactSurface<T>> ComputeContactSurfaces() const;
-
-  /** (Advanced) Reports polygonal contact surfaces between pairs of
-   intersecting geometries for hydroelastic contact model. It performs the
-   same task as ComputeContactSurfaces() with a different representation of
-   the output contact surfaces. The computation is subject to collision
-   filtering.
-
-   Each contact surface from this query consists of contact polygons, each of
-   which is an intersecting polygon between mesh elements of two geometries.
-
-   In the current incarnation, each contact polygon is represented by a
-   triangle with the same centroid, area, pressure value, and pressure
-   gradient as the contact polygon.
-
-   @warning The return type in this implementation is a std::vector of
-   ContactSurface that uses the representative triangles, and, in the future,
-   the return type will change to the true polygonal representation without
-   any deprecation period.
-
-   This query has the same handling of GeometryId's, limitations (supported
-   shapes and compliances), user-defined properties (elastic modulus and
-   tessellation), and scalar support (double and AutoDiffXd) as
-   ComputeContactSurfaces().
-
-   @returns A vector populated with all detected intersections characterized as
-            contact surfaces. The ordering of the results is guaranteed to be
-            consistent -- for fixed geometry poses, the results will remain
-            the same.
-   @throws std::exception for the same reason described in
-   ComputeContactSurfaces()  */
-  std::vector<ContactSurface<T>> ComputePolygonalContactSurfaces() const;
+  std::vector<ContactSurface<T>> ComputeContactSurfaces(
+      HydroelasticContactRepresentation representation) const;
 
   /** Reports pairwise intersections and characterizes each non-empty
    intersection as a ContactSurface _where possible_ and as a
@@ -365,6 +340,10 @@ class QueryObject {
    supports double and AutoDiffXd to the extent that those constituent methods
    do.
 
+   @param representation    Controls the mesh representation of the contact
+                            surface. See
+                            @ref contact_surface_discrete_representation
+                            "contact surface representation" for more details.
    @param[out] surfaces     The vector that contact surfaces will be added to.
                             The vector will _not_ be cleared.
    @param[out] point_pairs  The vector that fall back point pair data will be
@@ -373,27 +352,7 @@ class QueryObject {
    @throws std::exception for the reasons described in ComputeContactSurfaces()
                           and ComputePointPairPenetration(). */
   void ComputeContactSurfacesWithFallback(
-      std::vector<ContactSurface<T>>* surfaces,
-      std::vector<PenetrationAsPointPair<T>>* point_pairs) const;
-
-  /** (Advanced) Reports pairwise intersections and characterizes each
-   non-empty intersection as a polygonal contact surface _where possible_ and
-   as a PenetrationAsPointPair where not. It performs the same task as
-   ComputeContactSurfacesWithFallback() with a different representation of
-   the contact surfaces.
-
-   This method can be thought of as a combination of
-   ComputePolygonalContactSurfaces() and ComputePointPairPenetration().
-
-   @warning In the current incarnation, the output parameter `surfaces` in
-   this implementation uses ContactSurface consisting of one representative
-   triangle for each contact polygon. In the future, it will change to the
-   true polygonal representation without any deprecation period.
-
-   This method has the same ordering of the results, the same scalar support,
-   the same parameters, and the same exception as
-   ComputeContactSurfacesWithFallback().  */
-  void ComputePolygonalContactSurfacesWithFallback(
+      HydroelasticContactRepresentation representation,
       std::vector<ContactSurface<T>>* surfaces,
       std::vector<PenetrationAsPointPair<T>>* point_pairs) const;
 
