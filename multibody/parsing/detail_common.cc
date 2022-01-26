@@ -12,20 +12,20 @@ void DataSource::DemandExactlyOne() const {
 
 geometry::ProximityProperties ParseProximityProperties(
     const std::function<std::optional<double>(const char*)>& read_double,
-    bool is_rigid, bool is_soft) {
+    bool is_rigid, bool is_compliant) {
   using HT = geometry::internal::HydroelasticType;
   using geometry::internal::kComplianceType;
   using geometry::internal::kElastic;
   using geometry::internal::kHydroGroup;
   using geometry::internal::kRezHint;
 
-  // Both being true is disallowed -- so assert is_rigid NAND is_soft.
-  DRAKE_DEMAND(!(is_rigid && is_soft));
+  // Both being true is disallowed -- so assert is_rigid NAND is_compliant.
+  DRAKE_DEMAND(!(is_rigid && is_compliant));
   geometry::ProximityProperties properties;
 
   if (is_rigid) {
     properties.AddProperty(kHydroGroup, kComplianceType, HT::kRigid);
-  } else if (is_soft) {
+  } else if (is_compliant) {
     properties.AddProperty(kHydroGroup, kComplianceType, HT::kSoft);
   }
 
@@ -50,7 +50,14 @@ geometry::ProximityProperties ParseProximityProperties(
     }
   }
   if (hydroelastic_modulus) {
-    properties.AddProperty(kHydroGroup, kElastic, *hydroelastic_modulus);
+    if (is_rigid) {
+      static const logging::Warn log_once(
+        "Rigid geometries defined with the tag drake:rigid_hydroelastic should"
+        " not contain the tag drake:hydroelastic_modulus. Any values will be"
+        " ignored.");
+    } else {
+      properties.AddProperty(kHydroGroup, kElastic, *hydroelastic_modulus);
+    }
   }
 
   std::optional<double> dissipation =

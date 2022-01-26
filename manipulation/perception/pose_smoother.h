@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "drake/common/drake_deprecated.h"
 #include "drake/manipulation/util/moving_average_filter.h"
 #include "drake/systems/framework/event.h"
 #include "drake/systems/framework/leaf_system.h"
@@ -30,9 +31,24 @@ namespace perception {
  *  NASA Technical note, available to download at
  *  https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/20070017872.pdf
  *
+ * @system
+ * name: PoseSmoother
+ * input_ports:
+ * - u0
+ * output_ports:
+ * - y0
+ * - y1
+ * @endsystem
+ *
+ * Port `u0` accepts poses. Ports `y0` and `y1` produce smoothed poses and
+ * velocities, respectively.
+ *
  *  @ingroup manipulation_systems
  */
-class PoseSmoother : public systems::LeafSystem<double> {
+class DRAKE_DEPRECATED("2022-05-01",
+    "This class is being removed.  You are invited to copy it into your own"
+    " project in case you still need it.")
+PoseSmoother : public systems::LeafSystem<double> {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(PoseSmoother)
 

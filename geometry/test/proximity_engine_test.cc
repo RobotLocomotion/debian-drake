@@ -110,9 +110,9 @@ GTEST_TEST(ProximityEngineTests, AddDynamicGeometry) {
 // sufficient to confirm that it is being properly invoked. We'll simply attempt
 // to instantiate every shape and assert its classification based on whether
 // it's supported or not (note: this test doesn't depend on the choice of
-// rigid/soft -- for each shape, we pick an arbitrary compliance, preferring
-// one that is supported over one that is not. Otherwise, the compliance choice
-// is immaterial.)
+// rigid/compliant -- for each shape, we pick an arbitrary compliance type,
+// preferring one that is supported over one that is not. Otherwise, the
+// compliance choice is immaterial.)
 GTEST_TEST(ProximityEngineTests, ProcessHydroelasticProperties) {
   ProximityEngine<double> engine;
   // All of the geometries will have a scale comparable to edge_length, so that
@@ -121,11 +121,11 @@ GTEST_TEST(ProximityEngineTests, ProcessHydroelasticProperties) {
   const double edge_length = 0.5;
   const double E = 1e8;  // Elastic modulus.
   ProximityProperties soft_properties;
-  AddSoftHydroelasticProperties(edge_length, E, &soft_properties);
+  AddCompliantHydroelasticProperties(edge_length, E, &soft_properties);
   ProximityProperties rigid_properties;
   AddRigidHydroelasticProperties(edge_length, &rigid_properties);
 
-  // Case: soft sphere.
+  // Case: compliant sphere.
   {
     Sphere sphere{edge_length};
     const GeometryId sphere_id = GeometryId::get_new_id();
@@ -215,7 +215,7 @@ std::pair<GeometryId, RigidTransformd> AddShape(ProximityEngine<double>* engine,
   const double edge_length = 0.5;
   ProximityProperties properties;
   if (is_soft) {
-    AddSoftHydroelasticProperties(edge_length, 1e8, &properties);
+    AddCompliantHydroelasticProperties(edge_length, 1e8, &properties);
   } else {
     AddRigidHydroelasticProperties(edge_length, &properties);
   }
@@ -253,8 +253,8 @@ GTEST_TEST(ProximityEngineTest, ComputeContactSurfacesAutodiffSupport) {
       drake::FindResourceOrThrow("drake/geometry/test/non_convex_mesh.obj"),
       1.0 /* scale */};
 
-  // Case: Soft sphere and rigid mesh with AutoDiffXd -- confirm the contact
-  // surface has derivatives.
+  // Case: Compliant sphere and rigid mesh with AutoDiffXd -- confirm the
+  // contact surface has derivatives.
   {
     ProximityEngine<double> engine_d;
     const auto X_WGs_d = PopulateEngine(&engine_d, sphere, anchored, soft, mesh,
@@ -520,7 +520,7 @@ GTEST_TEST(ProximityEngineTests, ReplaceProperties) {
     EXPECT_EQ(PET::hydroelastic_type(sphere.id(), engine), kUndefined);
   }
 
-  // Create a baseline property set that requests a soft hydroelastic
+  // Create a baseline property set that requests a compliant hydroelastic
   // representation, but is not necessarily sufficient to define one.
   ProximityProperties hydro_trigger;
   hydro_trigger.AddProperty(kHydroGroup, kComplianceType,
@@ -1902,7 +1902,7 @@ class ProximityEngineHydro : public testing::Test {
     poses_ = MakeCollidingRing(r, 4);
 
     ProximityProperties soft_properties;
-    AddSoftHydroelasticProperties(r, 1e8, &soft_properties);
+    AddCompliantHydroelasticProperties(r, 1e8, &soft_properties);
     ProximityProperties rigid_properties;
     AddRigidHydroelasticProperties(r, &rigid_properties);
 
@@ -1960,7 +1960,7 @@ class ProximityEngineHydroWithFallback : public testing::Test {
     poses_ = MakeCollidingRing(r, N_);
 
     ProximityProperties soft_properties;
-    AddSoftHydroelasticProperties(r / 2, 1e8, &soft_properties);
+    AddCompliantHydroelasticProperties(r / 2, 1e8, &soft_properties);
     ProximityProperties rigid_properties;
     AddRigidHydroelasticProperties(r, &rigid_properties);
 

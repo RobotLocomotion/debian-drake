@@ -256,7 +256,7 @@ class TestGeometryCore(unittest.TestCase):
         mut.AddRigidHydroelasticProperties(
             resolution_hint=res_hint, properties=props)
         self.assertTrue(props.HasProperty("hydroelastic", "compliance_type"))
-        self.assertFalse(mut_testing.PropertiesIndicateSoftHydro(props))
+        self.assertFalse(mut_testing.PropertiesIndicateCompliantHydro(props))
         self.assertTrue(props.HasProperty("hydroelastic", "resolution_hint"))
         self.assertEqual(props.GetProperty("hydroelastic", "resolution_hint"),
                          res_hint)
@@ -264,15 +264,15 @@ class TestGeometryCore(unittest.TestCase):
         props = mut.ProximityProperties()
         mut.AddRigidHydroelasticProperties(properties=props)
         self.assertTrue(props.HasProperty("hydroelastic", "compliance_type"))
-        self.assertFalse(mut_testing.PropertiesIndicateSoftHydro(props))
+        self.assertFalse(mut_testing.PropertiesIndicateCompliantHydro(props))
         self.assertFalse(props.HasProperty("hydroelastic", "resolution_hint"))
 
         props = mut.ProximityProperties()
         res_hint = 0.275
-        mut.AddSoftHydroelasticProperties(
+        mut.AddCompliantHydroelasticProperties(
             resolution_hint=res_hint, hydroelastic_modulus=E, properties=props)
         self.assertTrue(props.HasProperty("hydroelastic", "compliance_type"))
-        self.assertTrue(mut_testing.PropertiesIndicateSoftHydro(props))
+        self.assertTrue(mut_testing.PropertiesIndicateCompliantHydro(props))
         self.assertTrue(props.HasProperty("hydroelastic", "resolution_hint"))
         self.assertEqual(props.GetProperty("hydroelastic", "resolution_hint"),
                          res_hint)
@@ -283,11 +283,11 @@ class TestGeometryCore(unittest.TestCase):
 
         props = mut.ProximityProperties()
         slab_thickness = 0.275
-        mut.AddSoftHydroelasticPropertiesForHalfSpace(
+        mut.AddCompliantHydroelasticPropertiesForHalfSpace(
             slab_thickness=slab_thickness, hydroelastic_modulus=E,
             properties=props)
         self.assertTrue(props.HasProperty("hydroelastic", "compliance_type"))
-        self.assertTrue(mut_testing.PropertiesIndicateSoftHydro(props))
+        self.assertTrue(mut_testing.PropertiesIndicateCompliantHydro(props))
         self.assertTrue(props.HasProperty("hydroelastic", "slab_thickness"))
         self.assertEqual(props.GetProperty("hydroelastic", "slab_thickness"),
                          slab_thickness)
@@ -353,6 +353,7 @@ class TestGeometryCore(unittest.TestCase):
             self, box,
             lambda shape: [shape.width(), shape.depth(), shape.height()])
         numpy_compare.assert_float_equal(box.size(), np.array([1.0, 2.0, 3.0]))
+        self.assertAlmostEqual(mut.CalcVolume(box), 6.0, 1e-14)
 
         capsule = mut.Capsule(radius=1.0, length=2.0)
         assert_shape_api(capsule)

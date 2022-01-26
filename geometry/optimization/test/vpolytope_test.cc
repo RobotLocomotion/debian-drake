@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 
 #include "drake/common/eigen_types.h"
+#include "drake/common/find_resource.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
+#include "drake/common/test_utilities/expect_throws_message.h"
 #include "drake/geometry/geometry_frame.h"
 #include "drake/geometry/optimization/test_utilities.h"
 #include "drake/geometry/scene_graph.h"
@@ -18,7 +20,10 @@ namespace drake {
 namespace geometry {
 namespace optimization {
 
+using Eigen::Matrix;
+using Eigen::Vector2d;
 using Eigen::Vector3d;
+using Eigen::Vector4d;
 using internal::CheckAddPointInSetConstraints;
 using internal::MakeSceneGraphWithShape;
 using math::RigidTransformd;
@@ -141,6 +146,74 @@ GTEST_TEST(VPolytopeTest, ArbitraryBoxTest) {
   EXPECT_FALSE(V_F.PointInSet(X_FW * out_W, kTol));
 }
 
+// Check if the set of vertices equals to the set of vertices_expected.
+void CheckVertices(const Eigen::Ref<const Eigen::Matrix3Xd>& vertices,
+                   const Eigen::Ref<const Eigen::Matrix3Xd>& vertices_expected,
+                   double tol) {
+  EXPECT_EQ(vertices.cols(), vertices_expected.cols());
+  const int num_vertices = vertices.cols();
+  for (int i = 0; i < num_vertices; ++i) {
+    bool found_match = false;
+    for (int j = 0; j < num_vertices; ++j) {
+      if (CompareMatrices(vertices.col(i), vertices_expected.col(j), tol)) {
+        found_match = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found_match);
+  }
+}
+
+GTEST_TEST(VPolytopeTest, OctahedronTest) {
+  const RigidTransformd X_WG(math::RollPitchYawd(.1, .2, 3),
+                             Vector3d(-4.0, -5.0, -6.0));
+  auto [scene_graph, geom_id] = MakeSceneGraphWithShape(
+      Convex(FindResourceOrThrow("drake/geometry/test/octahedron.obj")), X_WG);
+  auto context = scene_graph->CreateDefaultContext();
+  auto query =
+      scene_graph->get_query_output_port().Eval<QueryObject<double>>(*context);
+  VPolytope V(query, geom_id);
+  EXPECT_EQ(V.vertices().cols(), 6);
+
+  EXPECT_EQ(V.ambient_dimension(), 3);
+
+  Eigen::Matrix<double, 6, 3> p_GV_expected;
+  // clang-format off
+  p_GV_expected << 1, 1, 0,
+                   1, -1, 0,
+                   -1, 1, 0,
+                   -1, -1, 0,
+                   0, 0, std::sqrt(2),
+                   0, 0, -std::sqrt(2);
+  // clang-format on
+  CheckVertices(V.vertices(), X_WG * p_GV_expected.transpose(), 1E-9);
+}
+
+GTEST_TEST(VPolytopeTest, NonconvexMesh) {
+  auto [scene_graph, geom_id] = MakeSceneGraphWithShape(
+      Convex(FindResourceOrThrow("drake/geometry/test/non_convex_mesh.obj")),
+      RigidTransformd{});
+  auto context = scene_graph->CreateDefaultContext();
+  auto query =
+      scene_graph->get_query_output_port().Eval<QueryObject<double>>(*context);
+  VPolytope V(query, geom_id);
+
+  // The non-convex mesh contains 5 vertices, but the convex hull contains only
+  // 4 vertices.
+  const int num_vertices = 4;
+  EXPECT_EQ(V.vertices().cols(), num_vertices);
+  EXPECT_EQ(V.ambient_dimension(), 3);
+  Eigen::Matrix<double, 4, 3> vertices_expected;
+  // clang-format off
+  vertices_expected << 0, 0, 0,
+                       1, 0, 0,
+                       0, 1, 0,
+                       0, 0, 1;
+  // clang-format on
+  const double tol = 1E-12;
+  CheckVertices(V.vertices(), vertices_expected.transpose(), tol);
+}
+
 GTEST_TEST(VPolytopeTest, UnitBox6DTest) {
   VPolytope V = VPolytope::MakeUnitBox(6);
   EXPECT_EQ(V.ambient_dimension(), 6);
@@ -153,6 +226,135 @@ GTEST_TEST(VPolytopeTest, UnitBox6DTest) {
   EXPECT_TRUE(V.PointInSet(in2_W, kTol));
   EXPECT_FALSE(V.PointInSet(out1_W, kTol));
   EXPECT_FALSE(V.PointInSet(out2_W, kTol));
+}
+
+GTEST_TEST(VPolytopeTest, FromHUnitBoxTest) {
+  HPolyhedron H = HPolyhedron::MakeUnitBox(6);
+  VPolytope V(H);
+  EXPECT_EQ(V.ambient_dimension(), 6);
+  EXPECT_EQ(V.vertices().rows(), 6);
+  EXPECT_EQ(V.vertices().cols(), std::pow(2, 6));
+
+  const Vector6d in1_W{Vector6d::Constant(-.99)},
+      in2_W{Vector6d::Constant(.99)}, out1_W{Vector6d::Constant(-1.01)},
+      out2_W{Vector6d::Constant(1.01)};
+  Vector6d out3_W;
+  out3_W << .99, 1.01, .99, 1.01, .99, 1.01;
+
+  const double kTol = 1e-11;
+  EXPECT_TRUE(V.PointInSet(in1_W, kTol));
+  EXPECT_TRUE(V.PointInSet(in2_W, kTol));
+  EXPECT_FALSE(V.PointInSet(out1_W, kTol));
+  EXPECT_FALSE(V.PointInSet(out2_W, kTol));
+  EXPECT_FALSE(V.PointInSet(out3_W, kTol));
+}
+
+GTEST_TEST(VPolytopeTest, From2DHPolytopeTest) {
+  Matrix<double, 4, 2> A;
+  Vector4d b;
+  // clang-format off
+  A <<  1, -1,  // y ≥ x
+        1,  0,  // x ≤ 1
+        0,  1,  // y ≤ 2
+       -1,  0;  // x ≥ 0
+  // clang-format on
+  b << 0, 1, 2, 0;
+  HPolyhedron H(A, b);
+  VPolytope V(H);
+
+  // Vertices should be (0,0), (1,1), (1,2), and (0,2). The order of the
+  // returned vertices need not be unique.
+  Eigen::MatrixXd vertices(2, 4);
+  // clang-format off
+  vertices << 0, 1, 0, 1,
+              0, 1, 2, 2;
+  // clang-format on
+  for (int i = 0; i < 4; ++i) {
+    bool found_match = false;
+    for (int j = 0; j < 4; ++j) {
+      if (CompareMatrices(vertices.col(i), V.vertices().col(j), 1e-11)) {
+        found_match = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found_match);
+  }
+}
+
+GTEST_TEST(VPolytopeTest, From3DHSimplexTest) {
+  Matrix<double, 4, 3> A;
+  Vector4d b;
+  A <<  -1,  0,  0,
+         0, -1,  0,
+         0,  0, -1,
+         1,  1,  1;
+  b << 0, 0, 0, 1;
+  HPolyhedron H(A, b);
+  VPolytope V(H);
+
+  // Vertices are (0,0,0), (1,0,0), (0,1,0), and (0,0,1).  The order of the
+  // returned vertices need not be unique.
+  Eigen::MatrixXd vertices(3, 4);
+  // clang-format off
+  vertices << 0, 1, 0, 0,
+              0, 0, 1, 0,
+              0, 0, 0, 1;
+  // clang-format on
+  for (int i = 0; i < 4; ++i) {
+    bool found_match = false;
+    for (int j = 0; j < 4; ++j) {
+      if (CompareMatrices(vertices.col(i), V.vertices().col(j), 1e-11)) {
+        found_match = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found_match);
+  }
+}
+
+// Same as FromHPolytopeTest but with two redundant constraints.
+GTEST_TEST(VPolytopeTest, FromRedundantHPolytopeTest) {
+  Matrix<double, 6, 2> A;
+  Vector6d b;
+  A <<  1, -1,  // y ≥ x
+        1,  0,  // x ≤ 1
+        0,  1,  // y ≤ 2
+       -1,  0,  // x ≥ 0
+        1,  1,  // x + y ≤ 3.1   (redundant)
+       -1, -1;  // x + y ≥ - 0.1 (redundant)
+  b << 0, 1, 2, 0, 3.1, 0.1;
+  HPolyhedron H(A, b);
+  VPolytope V(H);
+
+  // Vertices should be (0,0), (1,1), (1,2), and (0,2). The order of the
+  // returned vertices need not be unique.
+  Eigen::MatrixXd vertices(2, 4);
+  // clang-format off
+  vertices << 0, 1, 0, 1,
+              0, 1, 2, 2;
+  // clang-format on
+  for (int i = 0; i < 4; ++i) {
+    bool found_match = false;
+    for (int j = 0; j < 4; ++j) {
+      if (CompareMatrices(vertices.col(i), V.vertices().col(j), 1e-11)) {
+        found_match = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found_match);
+  }
+}
+
+GTEST_TEST(VPolytopeTest, FromUnboundedHPolytopeTest) {
+  Matrix<double, 3, 2> A;
+  Vector3d b;
+  A <<  1, -1,  // y ≥ x
+        1,  0,  // x ≤ 1
+        0,  1;  // y ≤ 2
+  b << 0, 1, 2;
+  HPolyhedron H(A, b);
+
+  DRAKE_EXPECT_THROWS_MESSAGE(VPolytope{H}, ".*hpoly.IsBounded().*");
 }
 
 GTEST_TEST(VPolytopeTest, CloneTest) {
