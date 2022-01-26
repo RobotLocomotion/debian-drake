@@ -120,6 +120,8 @@ class TestGeometryOptimization(unittest.TestCase):
         self.assertTrue(v_box.PointInSet([0, 0, 0]))
         v_unit_box = mut.VPolytope.MakeUnitBox(dim=3)
         self.assertTrue(v_unit_box.PointInSet([0, 0, 0]))
+        v_from_h = mut.VPolytope(H=mut.HPolyhedron.MakeUnitBox(dim=3))
+        self.assertTrue(v_from_h.PointInSet([0, 0, 0]))
 
     def test_cartesian_product(self):
         point = mut.Point(np.array([11.1, 12.2, 13.3]))
@@ -312,3 +314,17 @@ class TestGeometryOptimization(unittest.TestCase):
         self.assertIsInstance(binding, Binding[Constraint])
         edge0.AddPhiConstraint(phi_value=False)
         edge0.ClearPhiConstraints()
+
+        # Remove Edges
+        self.assertEqual(len(spp.Edges()), 2)
+        spp.RemoveEdge(edge1.id())
+        self.assertEqual(len(spp.Edges()), 1)
+        spp.RemoveEdge(edge0)
+        self.assertEqual(len(spp.Edges()), 0)
+
+        # Remove Vertices
+        self.assertEqual(len(spp.Vertices()), 2)
+        spp.RemoveVertex(source.id())
+        self.assertEqual(len(spp.Vertices()), 1)
+        spp.RemoveVertex(target)
+        self.assertEqual(len(spp.Vertices()), 0)

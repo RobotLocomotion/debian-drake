@@ -3,7 +3,12 @@
 #include <limits>
 #include <memory>
 
+#include <fmt/format.h>
+#include <libqhullcpp/Qhull.h>
+#include <libqhullcpp/QhullVertexSet.h>
+
 #include "drake/common/is_approx_equal_abstol.h"
+#include "drake/geometry/read_obj.h"
 #include "drake/solvers/solve.h"
 
 namespace drake {
@@ -38,6 +43,69 @@ VPolytope::VPolytope(const QueryObject<double>& query_object,
   const RigidTransformd& X_WG = query_object.GetPoseInWorld(geometry_id);
   const RigidTransformd X_EG = X_WE.InvertAndCompose(X_WG);
   vertices_ = X_EG * vertices;
+}
+
+VPolytope::VPolytope(const HPolyhedron& hpoly)
+    : ConvexSet(&ConvexSetCloner<VPolytope>, hpoly.ambient_dimension()) {
+  DRAKE_THROW_UNLESS(hpoly.IsBounded());
+
+  Eigen::MatrixXd coeffs(hpoly.A().rows(), hpoly.A().cols() + 1);
+  coeffs.leftCols(hpoly.A().cols()) = hpoly.A();
+  coeffs.col(hpoly.A().cols()) = -hpoly.b();
+
+  Eigen::MatrixXd coeffs_t = coeffs.transpose();
+  std::vector<double> flat_coeffs;
+  flat_coeffs.resize(coeffs_t.size());
+  Eigen::VectorXd::Map(&flat_coeffs[0], coeffs_t.size()) =
+      Eigen::VectorXd::Map(coeffs_t.data(), coeffs_t.size());
+
+  Eigen::VectorXd eigen_center = hpoly.ChebyshevCenter();
+  std::vector<double> center;
+  center.resize(eigen_center.size());
+  Eigen::VectorXd::Map(&center[0], eigen_center.size()) = eigen_center;
+
+  orgQhull::Qhull qhull;
+  qhull.setFeasiblePoint(orgQhull::Coordinates(center));
+  //  By default, Qhull takes in a sequence of vertices and generates a convex
+  //  hull from them. Alternatively it can generate the convex hull from a
+  //  sequence of halfspaces (requested via the "H" argument). In that case the
+  //  inputs are overloaded with the `pointDimension` representing the dimension
+  //  the convex hull exists in plus the offset and the `pointCount`
+  //  representing the number of faces. Slightly more documentation can be found
+  //  here: http://www.qhull.org/html/qhull.htm.
+  qhull.runQhull("", hpoly.A().cols() + 1, hpoly.A().rows(), flat_coeffs.data(),
+                 "H");
+  if (qhull.qhullStatus() != 0) {
+    throw std::runtime_error(
+        fmt::format("Qhull terminated with status {} and  message:\n{}",
+                    qhull.qhullStatus(), qhull.qhullMessage()));
+  }
+
+  // Qhull flips some notation when you use the halfspace intersection:
+  // http://www.qhull.org/html/qh-code.htm#facet-cpp . Each facet from qhull
+  // represents an intersection between halfspaces of the H polyhedron.
+  // However, I could not figure out if each QhullFacet stored the exact
+  // location of the intersection (i.e. the vertex). Instead, this code takes
+  // each intersection of hyperplanes (QhullFacet), pulls out the hyperplanes
+  // that are part of the intersection (facet.vertices()) and solves for the
+  // vertex that lies at the intersection of these hyperplanes.
+  vertices_.resize(hpoly.ambient_dimension(), qhull.facetCount());
+  int ii = 0;
+  for (const auto& facet : qhull.facetList()) {
+    auto incident_hyperplanes = facet.vertices();
+    Eigen::MatrixXd vertex_A(incident_hyperplanes.count(),
+                             hpoly.ambient_dimension());
+    for (int jj = 0; jj < incident_hyperplanes.count(); jj++) {
+      std::vector<double> hyperplane =
+          incident_hyperplanes.at(jj).point().toStdVector();
+      vertex_A.row(jj) = Eigen::Map<Eigen::RowVectorXd, Eigen::Unaligned>(
+          hyperplane.data(), hyperplane.size());
+    }
+    vertices_.col(ii) = vertex_A.partialPivLu().solve(Eigen::VectorXd::Ones(
+                            incident_hyperplanes.count())) +
+                        eigen_center;
+    ii++;
+  }
 }
 
 VPolytope::~VPolytope() = default;
@@ -157,6 +225,7 @@ void VPolytope::ImplementGeometry(const Box& box, void* data) {
   const double x = box.width() / 2.0;
   const double y = box.depth() / 2.0;
   const double z = box.height() / 2.0;
+  DRAKE_ASSERT(data != nullptr);
   Matrix3Xd* vertices = static_cast<Matrix3Xd*>(data);
   vertices->resize(3, 8);
   // clang-format off
@@ -164,6 +233,36 @@ void VPolytope::ImplementGeometry(const Box& box, void* data) {
                 y,  y, -y, -y, -y, -y,  y,  y,
                -z, -z, -z, -z,  z,  z,  z,  z;
   // clang-format on
+}
+
+void VPolytope::ImplementGeometry(const Convex& convex, void* data) {
+  DRAKE_ASSERT(data != nullptr);
+  const auto [tinyobj_vertices, faces, num_faces] = internal::ReadObjFile(
+      convex.filename(), convex.scale(), false /* triangulate */);
+  unused(faces);
+  unused(num_faces);
+  orgQhull::Qhull qhull;
+  const int dim = 3;
+  std::vector<double> tinyobj_vertices_flat(tinyobj_vertices->size() * dim);
+  for (int i = 0; i < static_cast<int>(tinyobj_vertices->size()); ++i) {
+    for (int j = 0; j < dim; ++j) {
+      tinyobj_vertices_flat[dim * i + j] = (*tinyobj_vertices)[i](j);
+    }
+  }
+  qhull.runQhull("", dim, tinyobj_vertices->size(),
+                 tinyobj_vertices_flat.data(), "");
+  if (qhull.qhullStatus() != 0) {
+    throw std::runtime_error(
+        fmt::format("Qhull terminated with status {} and  message:\n{}",
+                    qhull.qhullStatus(), qhull.qhullMessage()));
+  }
+  Matrix3Xd* vertices = static_cast<Matrix3Xd*>(data);
+  vertices->resize(3, qhull.vertexCount());
+  int vertex_count = 0;
+  for (const auto& qhull_vertex : qhull.vertexList()) {
+    vertices->col(vertex_count++) =
+        Eigen::Map<Eigen::Vector3d>(qhull_vertex.point().toStdVector().data());
+  }
 }
 
 }  // namespace optimization

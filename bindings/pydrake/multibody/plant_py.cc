@@ -471,6 +471,7 @@ void DoScalarDependentDefinitions(py::module m, T) {
             py::arg("model_instance"), cls_doc.HasUniqueFreeBaseBody.doc)
         .def("GetUniqueFreeBaseBodyOrThrow",
             &Class::GetUniqueFreeBaseBodyOrThrow, py::arg("model_instance"),
+            py_rvp::reference_internal,
             cls_doc.GetUniqueFreeBaseBodyOrThrow.doc)
         .def(
             "EvalBodyPoseInWorld",
@@ -918,6 +919,17 @@ void DoScalarDependentDefinitions(py::module m, T) {
             cls_doc.set_contact_model.doc)
         .def("get_contact_model", &Class::get_contact_model,
             cls_doc.get_contact_model.doc)
+        .def_static("GetDefaultContactSurfaceRepresentation",
+            &Class::GetDefaultContactSurfaceRepresentation,
+            py::arg("time_step"),
+            cls_doc.GetDefaultContactSurfaceRepresentation.doc)
+        .def("set_contact_surface_representation",
+            &Class::set_contact_surface_representation,
+            py::arg("surface_representation"),
+            cls_doc.set_contact_surface_representation.doc)
+        .def("get_contact_surface_representation",
+            &Class::get_contact_surface_representation,
+            cls_doc.get_contact_surface_representation.doc)
         .def("set_penetration_allowance", &Class::set_penetration_allowance,
             py::arg("penetration_allowance") = 0.001,
             cls_doc.set_penetration_allowance.doc)
@@ -1273,29 +1285,6 @@ PYBIND11_MODULE(plant, m) {
         });
   }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  m.def("ConnectContactResultsToDrakeVisualizer",
-      WrapDeprecated(doc.ConnectContactResultsToDrakeVisualizer
-                         .doc_4args_builder_plant_lcm_publish_period,
-          [](systems::DiagramBuilder<double>* builder,
-              const MultibodyPlant<double>& plant, lcm::DrakeLcmInterface* lcm,
-              std::optional<double> publish_period) {
-            return drake::multibody::ConnectContactResultsToDrakeVisualizer(
-                builder, plant, lcm, publish_period);
-          }),
-      py::arg("builder"), py::arg("plant"), py::arg("lcm") = nullptr,
-      py::arg("publish_period") = std::nullopt, py_rvp::reference,
-      // Keep alive, ownership: `return` keeps `builder` alive.
-      py::keep_alive<0, 1>(),
-      // Keep alive, transitive: `plant` keeps `builder` alive.
-      py::keep_alive<2, 1>(),
-      // Keep alive, transitive: `lcm` keeps `builder` alive.
-      py::keep_alive<3, 1>(),
-      doc.ConnectContactResultsToDrakeVisualizer
-          .doc_4args_builder_plant_lcm_publish_period);
-#pragma GCC diagnostic pop
-
   m.def(
       "ConnectContactResultsToDrakeVisualizer",
       [](systems::DiagramBuilder<double>* builder,
@@ -1316,8 +1305,7 @@ PYBIND11_MODULE(plant, m) {
       py::keep_alive<3, 1>(),
       // Keep alive, transitive: `lcm` keeps `builder` alive.
       py::keep_alive<4, 1>(),
-      doc.ConnectContactResultsToDrakeVisualizer
-          .doc_5args_builder_plant_scene_graph_lcm_publish_period);
+      doc.ConnectContactResultsToDrakeVisualizer.doc_5args);
 
   {
     using Class = PropellerInfo;

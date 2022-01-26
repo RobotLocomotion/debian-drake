@@ -85,6 +85,7 @@ from pydrake.geometry import (
     Box,
     GeometryId,
     GeometrySet,
+    HydroelasticContactRepresentation,
     Meshcat,
     Rgba,
     Role,
@@ -2029,6 +2030,21 @@ class TestPlant(unittest.TestCase):
             plant.set_contact_model(model)
             self.assertEqual(plant.get_contact_model(), model)
 
+    def test_contact_surface_representation(self):
+        for time_step in [0.0, 0.1]:
+            plant = MultibodyPlant_[float](time_step)
+            self.assertEqual(
+                plant.get_contact_surface_representation(),
+                plant.GetDefaultContactSurfaceRepresentation(time_step))
+            reps = [
+                HydroelasticContactRepresentation.kTriangle,
+                HydroelasticContactRepresentation.kPolygon,
+            ]
+            for rep in reps:
+                plant.set_contact_surface_representation(rep)
+                self.assertEqual(
+                    plant.get_contact_surface_representation(), rep)
+
     def test_contact_results_to_lcm(self):
         # ContactResultsToLcmSystem
         file_name = FindResourceOrThrow(
@@ -2065,15 +2081,13 @@ class TestPlant(unittest.TestCase):
             0)
         # Check all valid combinations of the optional arguments.
         for optional_args in itertools.product(
-                [{}, {"scene_graph": scene_graph}],
                 [{}, {"lcm": None}, {"lcm": DrakeLcm()}],
                 [{}, {"publish_period": None}, {"publish_period": 1.0/32}]):
             kwargs = collections.ChainMap(*optional_args)
             with self.subTest(num_optional_args=len(kwargs), **kwargs):
-                is_deprecated = 0 if "scene_graph" in kwargs else 1
-                with catch_drake_warnings(expected_count=is_deprecated) as w:
-                    publisher = ConnectContactResultsToDrakeVisualizer(
-                        builder=builder, plant=plant, **kwargs)
+                publisher = ConnectContactResultsToDrakeVisualizer(
+                    builder=builder, plant=plant, scene_graph=scene_graph,
+                    **kwargs)
                 self.assertIsInstance(publisher, LcmPublisherSystem)
 
     def test_collision_filter(self):
@@ -2204,8 +2218,17 @@ class TestPlant(unittest.TestCase):
         self.assertEqual(prop2.num_propellers(), 2)
 
     def test_hydroelastic_contact_results(self):
+        time_steps = [
+            0.0,  # Continuous mode.
+            0.01,  # Discrete mode.
+        ]
+        for time_step in time_steps:
+            with self.subTest(time_step=time_step):
+                self._check_hydroelastic_contact_results(time_step)
+
+    def _check_hydroelastic_contact_results(self, time_step):
         builder = DiagramBuilder_[float]()
-        plant, scene_graph = AddMultibodyPlantSceneGraph(builder, 0.0)
+        plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step)
         Parser(plant).AddModelFromFile(
             FindResourceOrThrow(
                 "drake/bindings/pydrake/multibody/test/hydroelastic.sdf"))
@@ -2225,10 +2248,31 @@ class TestPlant(unittest.TestCase):
 
         self.assertEqual(contact_results.num_hydroelastic_contacts(), 1)
         contact_info = contact_results.hydroelastic_contact_info(0)
-        contact_info.contact_surface().id_M()
-        contact_info.contact_surface().id_N()
-        contact_info.contact_surface().tri_mesh_W().centroid()
+        self._sanity_check_contact_surface(contact_info.contact_surface())
         contact_info.F_Ac_W().get_coeffs()
+
+    def _sanity_check_contact_surface(self, dut):
+        dut.id_M()
+        dut.id_N()
+        dut.num_faces()
+        dut.num_vertices()
+        dut.area(face_index=0)
+        dut.total_area()
+        dut.face_normal(face_index=0)
+        dut.centroid(face_index=0)
+        dut.centroid()
+        dut.is_triangle()
+        dut.representation()
+        if dut.is_triangle():
+            dut.tri_mesh_W().centroid()
+        else:
+            dut.poly_mesh_W().centroid()
+        if dut.HasGradE_M():
+            dut.EvaluateGradE_M_W(index=0)
+        if dut.HasGradE_N():
+            dut.EvaluateGradE_N_W(index=0)
+        dut.Equal(surface=dut)
+        copy.copy(dut)
 
     @numpy_compare.check_nonsymbolic_types
     def test_contact_results_to_meshcat(self, T):
@@ -2258,3 +2302,15 @@ class TestPlant(unittest.TestCase):
             contact_results_port=plant.get_contact_results_output_port(),
             meshcat=meshcat,
             params=params)
+
+    def test_free_base_bodies(self):
+        plant = MultibodyPlant_[float](time_step=0.01)
+        model_instance = plant.AddModelInstance("new instance")
+        added_body = plant.AddRigidBody(
+            name="body", model_instance=model_instance,
+            M_BBo_B=SpatialInertia_[float]())
+        plant.Finalize()
+        self.assertTrue(plant.HasBodyNamed("body", model_instance))
+        self.assertTrue(plant.HasUniqueFreeBaseBody(model_instance))
+        body = plant.GetUniqueFreeBaseBodyOrThrow(model_instance)
+        self.assertEqual(body.index(), added_body.index())
