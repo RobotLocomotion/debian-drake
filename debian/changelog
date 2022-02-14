@@ -1,3 +1,9 @@
+drake (0.39.0-1) bionic; urgency=medium
+
+  * New upstream version
+
+ -- Drake Development Team <drake-users@mit.edu>  Mon, 14 Feb 2022 16:03:00 -0400
+
 drake (0.38.0-1) bionic; urgency=medium
 
   * New upstream version
