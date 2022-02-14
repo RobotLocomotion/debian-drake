@@ -56,7 +56,7 @@ class ShaderCallback : public vtkCommand {
   static ShaderCallback* New() { return new ShaderCallback; }
 
   // NOLINTNEXTLINE(runtime/int): To match pre-existing APIs.
-  void Execute(vtkObject*, unsigned long, void* callback_object) VTK_OVERRIDE {
+  void Execute(vtkObject*, unsigned long, void* callback_object) override {
     vtkShaderProgram* program =
         reinterpret_cast<vtkShaderProgram*>(callback_object);
     program->SetUniformf("z_near", z_near_);
@@ -76,6 +76,14 @@ class ShaderCallback : public vtkCommand {
   float z_far_{0.f};
 };
 
+// Not for external use, RenderEngineVtk uses this to index pipelines_ member.
+// Do not change, remove, or add any values.
+enum ImageType {
+  kColor = 0,
+  kLabel = 1,
+  kDepth = 2,
+};
+
 }  // namespace internal
 
 #endif  // !DRAKE_DOXYGEN_CXX
@@ -84,7 +92,7 @@ class ShaderCallback : public vtkCommand {
 class RenderEngineVtk : public RenderEngine,
                         private internal::ModuleInitVtkRenderingOpenGL2 {
  public:
-  /** \name Does not allow copy, move, or assignment  */
+  /** @name Does not allow copy, move, or assignment  */
   //@{
 #ifdef DRAKE_DOXYGEN_CXX
   // Note: the copy constructor operator is actually protected to serve as the
@@ -145,6 +153,12 @@ class RenderEngineVtk : public RenderEngine,
   RenderEngineVtk(const RenderEngineVtk& other);
 
  private:
+  // TODO(svenevs): The RenderClientGltf class from the work-in-progress `dev`
+  // folder needs access to the rendering pipelines.  We should reconsider the
+  // need for private friendship prior to promoting the RenderClientGltf class
+  // out of `dev`.
+  friend class RenderClientGltf;
+
   // @see RenderEngine::DoRegisterVisual().
   bool DoRegisterVisual(GeometryId id, const Shape& shape,
                         const PerceptionProperties& properties,

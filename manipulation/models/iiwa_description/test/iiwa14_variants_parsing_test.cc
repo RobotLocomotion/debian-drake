@@ -21,7 +21,8 @@ multibody::ModelInstanceIndex LoadIiwa14CanonicalModel(
   return parser.AddModelFromFile(canonical_model_file);
 }
 
-// Compares velocity, effort and position limits of two given actuators
+// Compares velocity, acceleration, effort and position limits of two given
+// actuators.
 void CompareActuatorLimits(const multibody::JointActuator<double>& joint_a,
                            const multibody::JointActuator<double>& joint_b) {
   EXPECT_NE(&joint_a, &joint_b);  // Different instance.
@@ -34,6 +35,10 @@ void CompareActuatorLimits(const multibody::JointActuator<double>& joint_a,
   EXPECT_TRUE(CompareMatrices(joint_a.joint().position_upper_limits(),
                               joint_b.joint().position_upper_limits()));
   EXPECT_EQ(joint_a.effort_limit(), joint_b.effort_limit());
+  EXPECT_TRUE(CompareMatrices(joint_a.joint().acceleration_lower_limits(),
+            joint_b.joint().acceleration_lower_limits()));
+  EXPECT_TRUE(CompareMatrices(joint_a.joint().acceleration_upper_limits(),
+            joint_b.joint().acceleration_upper_limits()));
 }
 
 // Tests that KUKA LBR iiwa14 models have consistent joint limits.
@@ -66,7 +71,9 @@ GTEST_TEST(JointLimitsIiwa14, TestEffortVelocityPositionValues) {
       "drake/manipulation/models/iiwa_description/urdf/"
       "iiwa14_spheres_dense_collision.urdf",
       "drake/manipulation/models/iiwa_description/urdf/"
-      "iiwa14_spheres_dense_elbow_collision.urdf"};
+      "iiwa14_spheres_dense_elbow_collision.urdf",
+      "drake/manipulation/models/iiwa_description/urdf/"
+      "dual_iiwa14_polytope_collision.urdf"};
 
   for (auto& model_file : model_files) {
     multibody::MultibodyPlant<double> plant(0.0);
@@ -82,6 +89,17 @@ GTEST_TEST(JointLimitsIiwa14, TestEffortVelocityPositionValues) {
           plant.get_joint_actuator(drake::multibody::JointActuatorIndex(i));
 
       CompareActuatorLimits(canonical_joint_actuator, joint_actuator);
+
+      // Test the joints from the second instance of the dual iiwa14 polytope
+      // collision model. They correspond to joints 7 to 13 of the model.
+      if (model_file.substr(model_file.find_last_of('/') + 1) ==
+          "dual_iiwa14_polytope_collision.urdf") {
+        const multibody::JointActuator<double>& second_instance_joint_actuator =
+            plant.get_joint_actuator(
+                drake::multibody::JointActuatorIndex(i + 7));
+        CompareActuatorLimits(canonical_joint_actuator,
+                              second_instance_joint_actuator);
+      }
     }
   }
 }

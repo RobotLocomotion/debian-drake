@@ -264,7 +264,7 @@ with <em style="color:gray">(source name)</em>.
  //   - Finalizing API for topology changes at discrete events.
  @endcond
 
- @tparam_nonsymbolic_scalar
+ @tparam_default_scalar
  @ingroup systems
  */
 template <typename T>
@@ -804,7 +804,14 @@ class SceneGraph final : public systems::LeafSystem<T> {
 
    Simply acquiring an instance of CollisionFilterManager will advance the
    @ref scene_graph_versioning "proximity version" for the related geometry
-   data (model or context).  */
+   data (model or context).
+
+   @note %SceneGraph does not track topology or semantic information of models,
+   so decisions about *what* to filter belong in software layers that have the
+   necessary information. For example, some automatic filtering is done in
+   @ref mbp_finalize_stage "MultibodyPlant::Finalize()". Applications may
+   need to add more filtering or adjust filters during simulation.
+  */
   //@{
 
   /** Returns the collision filter manager for this %SceneGraph instance's
@@ -899,18 +906,7 @@ class SceneGraph final : public systems::LeafSystem<T> {
 };
 
 }  // namespace geometry
-
-// Define the conversion trait to *only* allow double -> AutoDiffXd conversion.
-// Symbolic is not supported yet, and AutoDiff -> double doesn't "make sense".
-namespace systems {
-namespace scalar_conversion {
-template <>
-struct Traits<geometry::SceneGraph> {
-  template <typename T, typename U>
-  using supported = typename std::bool_constant<
-    std::is_same_v<U, double> && !std::is_same_v<T, symbolic::Expression>>;
-};
-}  // namespace scalar_conversion
-}  // namespace systems
-
 }  // namespace drake
+
+DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
+    class ::drake::geometry::SceneGraph)

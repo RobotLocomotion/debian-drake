@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "drake/common/extract_double.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_no_throw.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
@@ -43,7 +44,7 @@ GTEST_TEST(RotationMatrix, RotationMatrixConstructor) {
          4, 5,  6,
          7, 8, -10;
     DRAKE_EXPECT_THROWS_MESSAGE(
-        RotationMatrix<double>{m}, std::logic_error,
+        RotationMatrix<double>{m},
         "Error: Rotation matrix is not orthonormal[\\s\\S]*");
 
     // Barely non-orthogonal matrix should throw an exception.
@@ -51,7 +52,7 @@ GTEST_TEST(RotationMatrix, RotationMatrixConstructor) {
          0, cos_theta, sin_theta,
          0, -sin_theta, cos_theta;
     DRAKE_EXPECT_THROWS_MESSAGE(
-        RotationMatrix<double>{m}, std::logic_error,
+        RotationMatrix<double>{m},
         "Error: Rotation matrix is not orthonormal[\\s\\S]*");
 
     // Orthogonal matrix with determinant = -1 should throw an exception.
@@ -59,21 +60,21 @@ GTEST_TEST(RotationMatrix, RotationMatrixConstructor) {
          0, 1, 0,
          0, 0, -1;
     DRAKE_EXPECT_THROWS_MESSAGE(
-        RotationMatrix<double>{m}, std::logic_error,
+        RotationMatrix<double>{m},
         "Error: Rotation matrix determinant is negative.*");
 
     // Matrix with a NaN should throw an exception.
     m << 1, 0, 0,
          0, 1, 0,
          0, 0, std::numeric_limits<double>::quiet_NaN();
-    DRAKE_EXPECT_THROWS_MESSAGE(RotationMatrix<double>{m}, std::logic_error,
+    DRAKE_EXPECT_THROWS_MESSAGE(RotationMatrix<double>{m},
         "Error: Rotation matrix contains an element that is infinity or NaN.*");
 
     // Matrix with an infinity should throw an exception.
     m << 1, 0, 0,
          0, 1, 0,
          0, 0, std::numeric_limits<double>::infinity();
-    DRAKE_EXPECT_THROWS_MESSAGE(RotationMatrix<double>{m}, std::logic_error,
+    DRAKE_EXPECT_THROWS_MESSAGE(RotationMatrix<double>{m},
         "Error: Rotation matrix contains an element that is infinity or NaN.*");
   }
 }
@@ -130,43 +131,39 @@ GTEST_TEST(RotationMatrix, MakeFromOrthonormalRowsOrColumns) {
   // Non-orthogonal matrix should throw an exception (at least in debug builds).
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalRows(Fx, Fy, Fz),
-      std::logic_error, "Error: Rotation matrix is not orthonormal[\\s\\S]*");
+      "Error: Rotation matrix is not orthonormal[\\s\\S]*");
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalColumns(Fx, Fy, Fz),
-      std::logic_error, "Error: Rotation matrix is not orthonormal[\\s\\S]*");
+      "Error: Rotation matrix is not orthonormal[\\s\\S]*");
 
   // Non-right handed matrix with determinant < 0 should throw an exception.
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalRows(
-          Vector3d(-1, 0, 0), Fy, Fz), std::logic_error,
+          Vector3d(-1, 0, 0), Fy, Fz),
       "Error: Rotation matrix determinant is negative.*");
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalColumns(
-          Vector3d(-1, 0, 0), Fy, Fz), std::logic_error,
+          Vector3d(-1, 0, 0), Fy, Fz),
       "Error: Rotation matrix determinant is negative.*");
 
   // Matrix with a NaN should throw an exception.
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalRows(
           Vector3d(std::numeric_limits<double>::quiet_NaN(), 0, 0), Fy, Fz),
-      std::logic_error,
       "Error: Rotation matrix contains an element that is infinity or NaN.*");
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalColumns(
           Vector3d(std::numeric_limits<double>::quiet_NaN(), 0, 0), Fy, Fz),
-          std::logic_error,
         "Error: Rotation matrix contains an element that is infinity or NaN.*");
 
   // Matrix with an infinity should throw an exception.
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalRows(
           Vector3d(std::numeric_limits<double>::infinity(), 0, 0), Fy, Fz),
-      std::logic_error,
       "Error: Rotation matrix contains an element that is infinity or NaN.*");
   DRAKE_EXPECT_THROWS_MESSAGE_IF_ARMED(
       R = RotationMatrix<double>::MakeFromOrthonormalColumns(
           Vector3d(std::numeric_limits<double>::infinity(), 0, 0), Fy, Fz),
-          std::logic_error,
         "Error: Rotation matrix contains an element that is infinity or NaN.*");
 
   if (kDrakeAssertIsDisarmed) {
@@ -727,7 +724,6 @@ GTEST_TEST(RotationMatrix, SymbolicProjectionTest) {
   Expression quality;
   DRAKE_EXPECT_THROWS_MESSAGE(
       RotMatExpr::ProjectToRotationMatrix(m_symbolic, &quality),
-      std::runtime_error,
       ".*environment does not have an entry for the variable.*\n*");
 
   // Removing the free variable allows us to succeed.
@@ -926,7 +922,7 @@ GTEST_TEST(RotationMatrixTest, OperatorMultiplyByMatrix3X) {
     Eigen::MatrixXd bad_matrix_multiply;
     EXPECT_THROW(bad_matrix_multiply = R_AB * m_7x8, std::logic_error);
     DRAKE_EXPECT_THROWS_MESSAGE(
-        bad_matrix_multiply = R_AB * m_7x8, std::logic_error,
+        bad_matrix_multiply = R_AB * m_7x8,
         "Error: Inner dimension for matrix multiplication is not 3.");
   }
 }
@@ -1136,6 +1132,8 @@ void VerifyMakeFromOneUnitVector(const RotationMatrix<double>& R_AB,
 // tests in VerifyMakeFromOneUnitVector(), and do so for a set of test vectors
 // that span a relevant combination of u_min (u_min is defined above).
 GTEST_TEST(RotationMatrixTest, MakeFromOneUnitVector) {
+  using symbolic::Expression;
+
   const std::vector<Vector3<double>> test_vectors {
     Vector3<double>{0, 1, 2},        // u_min = ux = 0
     Vector3<double>{2, 0, 1},        // u_min = uy = 0
@@ -1161,6 +1159,13 @@ GTEST_TEST(RotationMatrixTest, MakeFromOneUnitVector) {
       const RotationMatrix<double> R_AB_basic =
           RotationMatrix<double>::MakeFromOneVector(b_A, axis_index);
       EXPECT_TRUE(CompareMatrices(R_AB.matrix(), R_AB_basic.matrix()));
+
+      // Verify that it also works for a "constant" Expression (holding double
+      // values).
+      const RotationMatrix<Expression> R_AB_sym =
+          RotationMatrix<Expression>::MakeFromOneVector(b_A, axis_index);
+      EXPECT_TRUE(CompareMatrices(R_AB.matrix(),
+                                  ExtractDoubleOrThrow(R_AB_sym.matrix())));
     }
   }
 }
@@ -1218,14 +1223,6 @@ GTEST_TEST(RotationMatrixTest, MakeFromOneUnitVectorExceptions) {
     EXPECT_FALSE(RotationMatrix<double>::MakeFromOneUnitVector(
         Vector3<double>(1, 2, 3), axis_index).IsValid());
   }
-
-  // Verify an exception is always thrown for a symbolic (non-numeric) type.
-  Vector3<symbolic::Expression> u_symbolic(1, 0, 0);
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      RotationMatrix<symbolic::Expression>::MakeFromOneVector(u_symbolic,
-                                                              axis_index),
-      "RotationMatrix::MakeFromOneUnitVector.* "
-      "cannot be used with a symbolic type.");
 }
 
 // Verify that the "basic" method MakeFromOneVector() throws an exception in
@@ -1269,14 +1266,6 @@ GTEST_TEST(RotationMatrixTest, MakeFromOneVectorExceptions) {
   const Vector3<double> huge_vector(1.2E21, 3.4E42, -5.6E63);
   R_AB = RotationMatrix<double>::MakeFromOneVector(huge_vector, axis_index);
   VerifyMakeFromOneUnitVector(R_AB, huge_vector.normalized(), axis_index);
-
-  // Verify an exception is always thrown for a symbolic (non-numeric) type.
-  Vector3<symbolic::Expression> v_symbolic(3, 2, 1);
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      RotationMatrix<symbolic::Expression>::MakeFromOneVector(v_symbolic,
-                                                              axis_index),
-      "RotationMatrix::MakeFromOneUnitVector.* "
-      "cannot be used with a symbolic type.");
 }
 
 }  // namespace
