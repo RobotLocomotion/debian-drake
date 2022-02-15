@@ -22,6 +22,7 @@
 #include "drake/common/autodiff.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/drake_copyable.h"
+#include "drake/common/drake_deprecated.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/polynomial.h"
 #include "drake/common/symbolic.h"
@@ -410,8 +411,10 @@ class MathematicalProgram {
    * @pre Each entry in `decision_variables` should not be a dummy variable.
    * @throws std::exception if the preconditions are not satisfied.
    */
+  // TODO(hongkai.dai): also check if decision_variables contain duplicate
+  // entries.
   void AddDecisionVariables(
-      const Eigen::Ref<const VectorXDecisionVariable>& decision_variables);
+      const Eigen::Ref<const MatrixXDecisionVariable>& decision_variables);
 
   /**
    * Returns a free polynomial in a monomial basis over @p indeterminates of a
@@ -479,6 +482,8 @@ class MathematicalProgram {
    * @return (p, Q) The polynomial p and the Gramian matrix Q. Q has been
    * added as decision variables to the program.
    */
+  DRAKE_DEPRECATED("2022-05-01",
+                   "Use NewSosPolynomial instead of NewNonnegativePolynomial")
   std::pair<symbolic::Polynomial, MatrixXDecisionVariable>
   NewNonnegativePolynomial(
       const Eigen::Ref<const VectorX<symbolic::Monomial>>& monomial_basis,
@@ -495,6 +500,8 @@ class MathematicalProgram {
    * - if type = kDsos, we impose the Gramian matrix being positive diagonally
    *   dominant.
    */
+  DRAKE_DEPRECATED("2022-05-01",
+                   "Use NewSosPolynomial instead of NewNonnegativePolynomial")
   symbolic::Polynomial NewNonnegativePolynomial(
       const Eigen::Ref<const MatrixX<symbolic::Variable>>& gramian,
       const Eigen::Ref<const VectorX<symbolic::Monomial>>& monomial_basis,
@@ -506,11 +513,6 @@ class MathematicalProgram {
    * indeterminates of total order up to @p degree / 2, hence the returned
    * polynomial p contains all the monomials of @p indeterminates of total order
    * up to @p degree.
-   * Depending on the type of the polynomial, we will impose different
-   * constraint on the polynomial.
-   * - if type = kSos, we impose the polynomial being SOS.
-   * - if type = kSdsos, we impose the polynomial being SDSOS.
-   * - if type = kDsos, we impose the polynomial being DSOS.
    * @param indeterminates All the indeterminates in the polynomial p.
    * @param degree The polynomial p will contain all the monomials up to order
    * @p degree.
@@ -519,6 +521,8 @@ class MathematicalProgram {
    * added as decision variables to the program.
    * @pre @p degree is a positive even number.
    */
+  DRAKE_DEPRECATED("2022-05-01",
+                   "Use NewSosPolynomial instead of NewNonnegativePolynomial")
   std::pair<symbolic::Polynomial, MatrixXDecisionVariable>
   NewNonnegativePolynomial(const symbolic::Variables& indeterminates,
                            int degree, NonnegativePolynomial type);
@@ -529,24 +533,47 @@ class MathematicalProgram {
    * polynomial
    *   p = Q₍₀,₀₎x² + 2Q₍₁,₀₎xy + Q₍₁,₁₎y²
    * and Q.
+   * Depending on the type of the polynomial, we will impose different
+   * constraint on the polynomial.
+   * - if type = kSos, we impose the polynomial being SOS.
+   * - if type = kSdsos, we impose the polynomial being SDSOS.
+   * - if type = kDsos, we impose the polynomial being DSOS.
    * @note Q is a symmetric monomial_basis.rows() x monomial_basis.rows()
    * matrix.
    */
   std::pair<symbolic::Polynomial, MatrixXDecisionVariable> NewSosPolynomial(
-      const Eigen::Ref<const VectorX<symbolic::Monomial>>& monomial_basis);
+      const Eigen::Ref<const VectorX<symbolic::Monomial>>& monomial_basis,
+      NonnegativePolynomial type = NonnegativePolynomial::kSos);
 
-  /** Returns a pair of a SOS polynomial p = m(x)ᵀQm(x) of degree @p degree
+  /**
+   * Overloads NewSosPolynomial, except the Gramian matrix Q is an
+   * input instead of an output.
+   */
+  symbolic::Polynomial NewSosPolynomial(
+      const Eigen::Ref<const MatrixX<symbolic::Variable>>& gramian,
+      const Eigen::Ref<const VectorX<symbolic::Monomial>>& monomial_basis,
+      NonnegativePolynomial type = NonnegativePolynomial::kSos);
+
+  /**
+   * Overloads NewSosPolynomial.
+   * Returns a pair of a SOS polynomial p = m(x)ᵀQm(x) of degree @p degree
    * and the Gramian matrix Q that should be PSD, where m(x) is the
    * result of calling `MonomialBasis(indeterminates, degree/2)`. For example,
    * `NewSosPolynomial({x}, 4)` returns a pair of a polynomial
    *   p = Q₍₀,₀₎x⁴ + 2Q₍₁,₀₎ x³ + (2Q₍₂,₀₎ + Q₍₁,₁₎)x² + 2Q₍₂,₁₎x + Q₍₂,₂₎
    * and Q.
+   * @param type Depending on the type of the polynomial, we will impose
+   * different constraint on the polynomial.
+   * - if type = kSos, we impose the polynomial being SOS.
+   * - if type = kSdsos, we impose the polynomial being SDSOS.
+   * - if type = kDsos, we impose the polynomial being DSOS.
    *
    * @throws std::exception if @p degree is not a positive even integer.
    * @see MonomialBasis.
    */
   std::pair<symbolic::Polynomial, MatrixXDecisionVariable> NewSosPolynomial(
-      const symbolic::Variables& indeterminates, int degree);
+      const symbolic::Variables& indeterminates, int degree,
+      NonnegativePolynomial type = NonnegativePolynomial::kSos);
 
   /**
    * @anchor even_degree_nonnegative_polynomial
@@ -836,8 +863,9 @@ class MathematicalProgram {
    * @pre Each entry in new_indeterminates should not be dummy.
    * @pre Each entry in new_indeterminates should be of CONTINUOUS type.
    */
+  // TODO(hongkai.dai): check if new_indeterminates contain duplicate entries.
   void AddIndeterminates(
-      const Eigen::Ref<const VectorXIndeterminate>& new_indeterminates);
+      const Eigen::Ref<const MatrixXIndeterminate>& new_indeterminates);
 
   /**
    * Adds a callback method to visualize intermediate results of the
@@ -1290,9 +1318,11 @@ class MathematicalProgram {
   //@{
   /**
    * An overloaded version of @ref maximize_geometric_mean.
+   * @return cost The added cost (note that since MathematicalProgram only
+   * minimizes the cost, the returned cost evaluates to -c * power(∏ᵢx(i), 1/n).
    * @pre A.rows() == b.rows(), A.rows() >= 2.
    */
-  void AddMaximizeGeometricMeanCost(
+  Binding<LinearCost> AddMaximizeGeometricMeanCost(
       const Eigen::Ref<const Eigen::MatrixXd>& A,
       const Eigen::Ref<const Eigen::VectorXd>& b,
       const Eigen::Ref<const VectorX<symbolic::Variable>>& x);
@@ -1303,10 +1333,12 @@ class MathematicalProgram {
    * 1/n).
    * @param c The positive coefficient of the geometric mean cost, @default
    * is 1.
+   * @return cost The added cost (note that since MathematicalProgram only
+   * minimizes the cost, the returned cost evaluates to -c * power(∏ᵢx(i), 1/n).
    * @pre x.rows() >= 2.
    * @pre c > 0.
    */
-  void AddMaximizeGeometricMeanCost(
+  Binding<LinearCost> AddMaximizeGeometricMeanCost(
       const Eigen::Ref<const VectorX<symbolic::Variable>>& x, double c = 1.0);
   //@}
 
@@ -1349,9 +1381,9 @@ class MathematicalProgram {
    * @exclude_from_pydrake_mkdoc{Not bound in pydrake.}
    */
   Binding<Constraint> AddConstraint(
-      const Eigen::Ref<const VectorX<symbolic::Expression>>& v,
-      const Eigen::Ref<const Eigen::VectorXd>& lb,
-      const Eigen::Ref<const Eigen::VectorXd>& ub);
+      const Eigen::Ref<const MatrixX<symbolic::Expression>>& v,
+      const Eigen::Ref<const Eigen::MatrixXd>& lb,
+      const Eigen::Ref<const Eigen::MatrixXd>& ub);
 
   /**
    * Add a constraint represented by a symbolic formula to the program. The
@@ -1555,9 +1587,9 @@ class MathematicalProgram {
    * ub</tt> includes trivial/unsatisfiable constraints.
    */
   Binding<LinearConstraint> AddLinearConstraint(
-      const Eigen::Ref<const VectorX<symbolic::Expression>>& v,
-      const Eigen::Ref<const Eigen::VectorXd>& lb,
-      const Eigen::Ref<const Eigen::VectorXd>& ub);
+      const Eigen::Ref<const MatrixX<symbolic::Expression>>& v,
+      const Eigen::Ref<const Eigen::MatrixXd>& lb,
+      const Eigen::Ref<const Eigen::MatrixXd>& ub);
 
   /**
    * Add a linear constraint represented by a symbolic formula to the
@@ -1860,13 +1892,13 @@ class MathematicalProgram {
    * decision variables.
    * @param lb The lower bound.
    * @param ub The upper bound.
-   * @param vars Will imposes constraint lb(i) <= vars(i) <= ub(i).
+   * @param vars Will imposes constraint lb(i, j) <= vars(i, j) <= ub(i, j).
    * @return The newly constructed BoundingBoxConstraint.
    */
   Binding<BoundingBoxConstraint> AddBoundingBoxConstraint(
-      const Eigen::Ref<const Eigen::VectorXd>& lb,
-      const Eigen::Ref<const Eigen::VectorXd>& ub,
-      const Eigen::Ref<const VectorXDecisionVariable>& vars);
+      const Eigen::Ref<const Eigen::MatrixXd>& lb,
+      const Eigen::Ref<const Eigen::MatrixXd>& ub,
+      const Eigen::Ref<const MatrixXDecisionVariable>& vars);
 
   /**
    * Adds bounds for a single variable.
@@ -2375,9 +2407,10 @@ class MathematicalProgram {
    * of the decision variables (defined in the vars parameter).
    */
   Binding<Constraint> AddPolynomialConstraint(
-      const VectorXPoly& polynomials,
+      const Eigen::Ref<const MatrixX<Polynomiald>>& polynomials,
       const std::vector<Polynomiald::VarType>& poly_vars,
-      const Eigen::VectorXd& lb, const Eigen::VectorXd& ub,
+      const Eigen::Ref<const Eigen::MatrixXd>& lb,
+      const Eigen::Ref<const Eigen::MatrixXd>& ub,
       const VariableRefList& vars) {
     return AddPolynomialConstraint(polynomials, poly_vars, lb, ub,
                                    ConcatenateVariableRefList(vars));
@@ -2388,9 +2421,10 @@ class MathematicalProgram {
    * of the decision variables (defined in the vars parameter).
    */
   Binding<Constraint> AddPolynomialConstraint(
-      const VectorXPoly& polynomials,
+      const Eigen::Ref<const MatrixX<Polynomiald>>& polynomials,
       const std::vector<Polynomiald::VarType>& poly_vars,
-      const Eigen::VectorXd& lb, const Eigen::VectorXd& ub,
+      const Eigen::Ref<const Eigen::MatrixXd>& lb,
+      const Eigen::Ref<const Eigen::MatrixXd>& ub,
       const Eigen::Ref<const VectorXDecisionVariable>& vars);
 
   /**
@@ -2964,10 +2998,10 @@ class MathematicalProgram {
   std::vector<Binding<Constraint>> GetAllConstraints() const;
 
   /** Getter for number of variables in the optimization program */
-  int num_vars() const { return decision_variables_.rows(); }
+  int num_vars() const { return decision_variables_.size(); }
 
   /** Gets the number of indeterminates in the optimization program */
-  int num_indeterminates() const { return indeterminates_.rows(); }
+  int num_indeterminates() const { return indeterminates_.size(); }
 
   /** Getter for the initial guess */
   const Eigen::VectorXd& initial_guess() const { return x_initial_guess_; }
@@ -3149,21 +3183,29 @@ class MathematicalProgram {
       double tol = 1e-6) const;
 
   /** Getter for all decision variables in the program. */
-  const VectorXDecisionVariable& decision_variables() const {
-    return decision_variables_;
+  Eigen::Map<const VectorX<symbolic::Variable>> decision_variables() const {
+    return Eigen::Map<const VectorX<symbolic::Variable>>(
+        decision_variables_.data(), decision_variables_.size());
   }
 
   /** Getter for the decision variable with index @p i in the program. */
   const symbolic::Variable& decision_variable(int i) const {
-    return decision_variables_(i);
+    DRAKE_ASSERT(i >= 0);
+    DRAKE_ASSERT(i < static_cast<int>(decision_variables_.size()));
+    return decision_variables_[i];
   }
 
   /** Getter for all indeterminates in the program. */
-  const VectorXIndeterminate& indeterminates() const { return indeterminates_; }
+  Eigen::Map<const VectorX<symbolic::Variable>> indeterminates() const {
+    return Eigen::Map<const VectorX<symbolic::Variable>>(
+        indeterminates_.data(), indeterminates_.size());
+  }
 
   /** Getter for the indeterminate with index @p i in the program. */
   const symbolic::Variable& indeterminate(int i) const {
-    return indeterminates_(i);
+    DRAKE_ASSERT(i >= 0);
+    DRAKE_ASSERT(i < static_cast<int>(indeterminates_.size()));
+    return indeterminates_[i];
   }
 
   /// Getter for the required capability on the solver, given the
@@ -3203,7 +3245,8 @@ class MathematicalProgram {
    * unscaled. Namely, MathematicalProgramResult::GetSolution(var) returns the
    * value of var, not var_value / scaling_factor.
    *
-   * The feature of variable scaling is currently only implemented for SNOPT.
+   * The feature of variable scaling is currently only implemented for SNOPT and
+   * OSQP.
    */
   //@{
   /**
@@ -3224,6 +3267,13 @@ class MathematicalProgram {
    * See @ref variable_scaling "Variable scaling" for more information.
    */
   void SetVariableScaling(const symbolic::Variable& var, double s);
+
+  /**
+   * Clears the scaling factors for decision variables.
+   *
+   * See @ref variable_scaling "Variable scaling" for more information.
+   */
+  void ClearVariableScaling() { var_scaling_map_.clear(); }
   //@}
 
   /**
@@ -3298,10 +3348,14 @@ class MathematicalProgram {
   // in the optimization program.
   std::unordered_map<symbolic::Variable::Id, int> decision_variable_index_{};
 
-  VectorXDecisionVariable decision_variables_;
+  // Use std::vector here instead of Eigen::VectorX because std::vector performs
+  // much better when pushing new variables into the container.
+  std::vector<symbolic::Variable> decision_variables_;
 
   std::unordered_map<symbolic::Variable::Id, int> indeterminates_index_;
-  VectorXIndeterminate indeterminates_;
+  // Use std::vector here instead of Eigen::VectorX because std::vector performs
+  // much better when pushing new variables into the container.
+  std::vector<symbolic::Variable> indeterminates_;
 
   std::vector<Binding<VisualizationCallback>> visualization_callbacks_;
 
@@ -3355,18 +3409,15 @@ class MathematicalProgram {
       num_new_vars = rows * (rows + 1) / 2;
     }
     DRAKE_ASSERT(static_cast<int>(names.size()) == num_new_vars);
-    decision_variables_.conservativeResize(num_vars() + num_new_vars,
-                                           Eigen::NoChange);
     int row_index = 0;
     int col_index = 0;
     for (int i = 0; i < num_new_vars; ++i) {
-      decision_variables_(num_vars() - num_new_vars + i) =
-          symbolic::Variable(names[i], type);
-      const int new_var_index = num_vars() - num_new_vars + i;
-      decision_variable_index_.insert(std::pair<int, int>(
-          decision_variables_(new_var_index).get_id(), new_var_index));
+      decision_variables_.emplace_back(names[i], type);
+      const int new_var_index = decision_variables_.size() - 1;
+      decision_variable_index_.insert(std::make_pair(
+          decision_variables_[new_var_index].get_id(), new_var_index));
       decision_variable_matrix(row_index, col_index) =
-          decision_variables_(num_vars() - num_new_vars + i);
+          decision_variables_[new_var_index];
       // If the matrix is not symmetric, then store the variable in column
       // major.
       if (!is_symmetric) {
@@ -3402,24 +3453,21 @@ class MathematicalProgram {
   template <typename T>
   void NewIndeterminates_impl(
       const T& names, Eigen::Ref<MatrixXIndeterminate> indeterminates_matrix) {
-    int rows = indeterminates_matrix.rows();
-    int cols = indeterminates_matrix.cols();
-    int num_new_vars = rows * cols;
+    const int rows = indeterminates_matrix.rows();
+    const int cols = indeterminates_matrix.cols();
+    const int num_new_vars = rows * cols;
 
     DRAKE_ASSERT(static_cast<int>(names.size()) == num_new_vars);
-    indeterminates_.conservativeResize(indeterminates_.rows() + num_new_vars,
-                                       Eigen::NoChange);
     int row_index = 0;
     int col_index = 0;
     for (int i = 0; i < num_new_vars; ++i) {
-      indeterminates_(indeterminates_.rows() - num_new_vars + i) =
-          symbolic::Variable(names[i]);
+      indeterminates_.emplace_back(names[i]);
 
-      const int new_var_index = indeterminates_.rows() - num_new_vars + i;
-      indeterminates_index_.insert(std::pair<size_t, size_t>(
-          indeterminates_(new_var_index).get_id(), new_var_index));
+      const int new_var_index = indeterminates_.size() - 1;
+      indeterminates_index_.insert(std::make_pair(
+          indeterminates_[new_var_index].get_id(), new_var_index));
       indeterminates_matrix(row_index, col_index) =
-          indeterminates_(indeterminates_.rows() - num_new_vars + i);
+          indeterminates_[new_var_index];
 
       // store the indeterminate in column major.
       if (row_index + 1 < rows) {

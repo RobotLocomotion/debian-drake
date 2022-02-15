@@ -92,11 +92,7 @@ class UnitInertia : public RotationalInertia<T> {
   ///       not strictly positive.
   UnitInertia<T>& SetFromRotationalInertia(
       const RotationalInertia<T>& I, const T& mass) {
-    if (mass <= 0) {
-      const std::string message = fmt::format("RotationalInertia::{}():"
-          " Division by zero mass or negative mass.", __func__);
-      throw std::runtime_error(message);
-    }
+    DRAKE_THROW_UNLESS(mass > 0);
     RotationalInertia<T>::operator=(I / mass);
     return *this;
   }
@@ -310,6 +306,15 @@ class UnitInertia : public RotationalInertia<T> {
     const T K = (T(3) * r * r + L * L) / T(12);
     return AxiallySymmetric(J, K, b_E);
   }
+
+  /// Computes the unit inertia for a uniform density unit-mass capsule C
+  /// whose axis of revolution is along the z-axis.
+  /// @param[in] r The radius of the cylinder/half-sphere part of the capsule.
+  /// @param[in] L The length of the cylindrical part of the capsule.
+  /// @throws std::exception
+  ///   - Radius r is negative.
+  ///   - Length L is negative.
+  static UnitInertia<T> SolidCapsule(const T& r, const T& L);
 
   /// Computes the unit inertia for a unit-mass cylinder of uniform density
   /// oriented along the z-axis computed about a point at the center of

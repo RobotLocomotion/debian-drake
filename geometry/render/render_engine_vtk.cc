@@ -10,6 +10,7 @@
 #include <vtkCylinderSource.h>
 #include <vtkOBJReader.h>
 #include <vtkOpenGLPolyDataMapper.h>
+#include <vtkOpenGLShaderProperty.h>
 #include <vtkOpenGLTexture.h>
 #include <vtkPNGReader.h>
 #include <vtkPlaneSource.h>
@@ -32,6 +33,7 @@ using Eigen::Vector2d;
 using Eigen::Vector4d;
 using math::RigidTransformd;
 using std::make_unique;
+using internal::ImageType;
 using systems::sensors::CameraInfo;
 using systems::sensors::ColorD;
 using systems::sensors::ColorI;
@@ -71,12 +73,6 @@ float CheckRangeAndConvertToMeters(float z_buffer_value, double z_near,
   if (z_buffer_value == 1) return ImageTraits<PixelType::kDepth32F>::kTooFar;
   return static_cast<float>(z_buffer_value * (z_far - z_near) + z_near);
 }
-
-enum ImageType {
-  kColor = 0,
-  kLabel = 1,
-  kDepth = 2,
-};
 
 // TODO(SeanCurtis-TRI): Add X_PG pose to this data.
 // A package of data required to register a visual geometry.
@@ -329,6 +325,8 @@ RenderEngineVtk::RenderEngineVtk(const RenderEngineVtk& other)
       vtkActor& source = *source_actors[i];
       vtkActor& clone = *clone_actors[i];
 
+      clone.SetShaderProperty(source.GetShaderProperty());
+
       // NOTE: The clone renderer and original renderer *share* polygon data
       // (via the shared mapper) and all textures. If the meshes or textures get
       // modified _in place_ in a clone, the change would be visible to all
@@ -475,8 +473,11 @@ void RenderEngineVtk::ImplementGeometry(vtkPolyDataAlgorithm* source,
   std::array<vtkNew<vtkOpenGLPolyDataMapper>, kNumPipelines> mappers;
 
   // Sets vertex and fragment shaders only to the depth mapper.
-  mappers[ImageType::kDepth]->SetVertexShaderCode(shaders::kDepthVS);
-  mappers[ImageType::kDepth]->SetFragmentShaderCode(shaders::kDepthFS);
+  vtkOpenGLShaderProperty* shader_prop = vtkOpenGLShaderProperty::SafeDownCast(
+      actors[ImageType::kDepth]->GetShaderProperty());
+  DRAKE_DEMAND(shader_prop != nullptr);
+  shader_prop->SetVertexShaderCode(shaders::kDepthVS);
+  shader_prop->SetFragmentShaderCode(shaders::kDepthFS);
   mappers[ImageType::kDepth]->AddObserver(
       vtkCommand::UpdateShaderEvent, uniform_setting_callback_.Get());
 
