@@ -37,7 +37,7 @@ override_dh_auto_install-arch:
 	@# for drake-visualizer.  The installed drake-visualizer python wrapper
 	@# handles this, however dh_makeshlibs will fail because the VTK 8
 	@# libraries (C++ and Python) have missing rpath entries not able to be
-	@# resolved.  The following two lines patch the rpath entries for VTK 8
+	@# resolved.  The following three lines patch the rpath entries for VTK 8
 	@# C++ and Python libraries so the dh_makeshlibs checks can pass.  The
 	@# installed ${prefix}/bin/.drake-visualizer-real executable already has
 	@# its rpath set to $ORIGIN/../lib so no patching is necessary.
@@ -45,6 +45,8 @@ override_dh_auto_install-arch:
 	find $(DESTDIR)/opt/drake/lib -type f -name "libvtk*-8.2.so.1" \
 		-printf '  patchelf on %p\n' -exec patchelf --set-rpath '$$ORIGIN' {} \;
 	find $(DESTDIR)/opt/drake/lib/python*/site-packages/vtkmodules -name "*.so" \
+		-printf '  patchelf on %p\n' -exec patchelf --set-rpath '$$ORIGIN/../../..' {} \;
+	find $(DESTDIR)/opt/drake/lib/python*/site-packages/director -name "vtk*.so" \
 		-printf '  patchelf on %p\n' -exec patchelf --set-rpath '$$ORIGIN/../../..' {} \;
 	rm -rf \
 		$(DESTDIR)/opt/drake/include/ibex \
