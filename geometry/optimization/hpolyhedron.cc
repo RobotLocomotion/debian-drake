@@ -136,6 +136,17 @@ HPolyhedron HPolyhedron::CartesianPower(int n) const {
   return {A_power, b_power};
 }
 
+HPolyhedron HPolyhedron::Intersection(const HPolyhedron& other) const {
+  DRAKE_DEMAND(ambient_dimension() == other.ambient_dimension());
+  MatrixXd A_intersect =
+      MatrixXd::Zero(A_.rows() + other.A().rows(), A_.cols());
+  A_intersect.topRows(A_.rows()) = A_;
+  A_intersect.bottomRows(other.A().rows()) = other.A();
+  VectorXd b_intersect(b_.size() + other.b().size());
+  b_intersect << b_, other.b();
+  return {A_intersect, b_intersect};
+}
+
 HPolyhedron HPolyhedron::MakeBox(const Eigen::Ref<const VectorXd>& lb,
                                  const Eigen::Ref<const VectorXd>& ub) {
   DRAKE_DEMAND(lb.size() == ub.size());
@@ -207,6 +218,26 @@ HPolyhedron::DoAddPointInNonnegativeScalingConstraints(
   constraints.emplace_back(prog->AddLinearConstraint(
       Abar, VectorXd::Constant(m, -std::numeric_limits<double>::infinity()),
       VectorXd::Zero(m), {x, Vector1<Variable>(t)}));
+  return constraints;
+}
+
+std::vector<Binding<Constraint>>
+HPolyhedron::DoAddPointInNonnegativeScalingConstraints(
+    MathematicalProgram* prog, const Eigen::Ref<const MatrixXd>& A_x,
+    const Eigen::Ref<const VectorXd>& b_x, const Eigen::Ref<const VectorXd>& c,
+    double d, const Eigen::Ref<const VectorXDecisionVariable>& x,
+    const Eigen::Ref<const VectorXDecisionVariable>& t) const {
+  std::vector<Binding<Constraint>> constraints;
+  // A (A_x x + b_x) ≤ (c' t + d) b, written as [A * A_x, -b * c'][x;t] ≤ d * b
+  // - A * b_x
+  const int m = A_.rows();
+  MatrixXd A_bar(m, x.size() + t.size());
+  A_bar.leftCols(x.size()) = A_ * A_x;
+  A_bar.rightCols(t.size()) = -b_ * c.transpose();
+  VectorXd b_bar = d * b_ - A_ * b_x;
+  constraints.emplace_back(prog->AddLinearConstraint(
+      A_bar, VectorXd::Constant(m, -std::numeric_limits<double>::infinity()),
+      b_bar, {x, t}));
   return constraints;
 }
 

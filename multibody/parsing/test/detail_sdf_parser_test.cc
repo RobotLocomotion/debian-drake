@@ -53,37 +53,34 @@ const double kEps = std::numeric_limits<double>::epsilon();
 
 // TODO(jwnimmer-tri) This unit test has a lot of copy-pasta, including these
 // helper functions as well as all their call sites below.  We should refactor
-// the plant, scene_graph, etc. into a test fixture for brevity.
+// the plant, etc. into a test fixture for brevity.
 ModelInstanceIndex AddModelFromSdfFile(
     const std::string& file_name,
     const std::string& model_name,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph = nullptr,
     bool test_sdf_forced_nesting = false) {
-  const DataSource data_source{&file_name, {}};
+  const DataSource data_source{DataSource::kFilename, &file_name};
   return AddModelFromSdf(data_source, model_name, package_map, plant,
-                         scene_graph, test_sdf_forced_nesting);
+                         test_sdf_forced_nesting);
 }
 std::vector<ModelInstanceIndex> AddModelsFromSdfFile(
     const std::string& file_name,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph = nullptr,
     bool test_sdf_forced_nesting = false) {
-  const DataSource data_source{&file_name, {}};
+  const DataSource data_source{DataSource::kFilename, &file_name};
   return AddModelsFromSdf(
-      data_source, package_map, plant, scene_graph, test_sdf_forced_nesting);
+      data_source, package_map, plant, test_sdf_forced_nesting);
 }
 std::vector<ModelInstanceIndex> AddModelsFromSdfString(
     const std::string& file_contents,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph = nullptr,
     bool test_sdf_forced_nesting = false) {
-  const DataSource data_source{{}, &file_contents};
-  return AddModelsFromSdf(
-      data_source, package_map, plant, scene_graph, test_sdf_forced_nesting);
+  const DataSource data_source{DataSource::kContents, &file_contents};
+  return AddModelsFromSdf(data_source, package_map, plant,
+                          test_sdf_forced_nesting);
 }
 
 const Frame<double>& GetModelFrameByName(const MultibodyPlant<double>& plant,
@@ -97,7 +94,6 @@ GTEST_TEST(MultibodyPlantSdfParserTest, PackageMapSpecified) {
   // We start with the world and default model instances (model_instance.h
   // explains why there are two).
   MultibodyPlant<double> plant(0.0);
-  geometry::SceneGraph<double> scene_graph;
   ASSERT_EQ(plant.num_model_instances(), 2);
 
   const std::string full_sdf_filename = FindResourceOrThrow(
@@ -111,7 +107,7 @@ GTEST_TEST(MultibodyPlantSdfParserTest, PackageMapSpecified) {
   package_map.PopulateFromFolder(package_path.string());
 
   // Read in the SDF file.
-  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant, &scene_graph);
+  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant);
   plant.Finalize();
 
   // Verify the number of model instances.
@@ -128,7 +124,7 @@ GTEST_TEST(MultibodyPlantSdfParserTest, VeryOldVersion) {
       "drake/multibody/parsing/test/sdf_parser_test/very_old_version.sdf");
 
   EXPECT_EQ(plant.num_model_instances(), 2);
-  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant, nullptr);
+  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant);
   plant.Finalize();
   EXPECT_EQ(plant.num_model_instances(), 3);
 }
@@ -726,37 +722,23 @@ GTEST_TEST(SdfParser, IncludeTags) {
   EXPECT_TRUE(plant.HasJointNamed("weld_robots", weld_model_robot2_model));
 }
 
-GTEST_TEST(SdfParser, TestOptionalSceneGraph) {
+GTEST_TEST(SdfParser, TestSceneGraph) {
   const std::string full_name = FindResourceOrThrow(
       "drake/multibody/parsing/test/"
       "links_with_visuals_and_collisions.sdf");
   PackageMap package_map;
-
-  int num_visuals_explicit{};
-  {
-    // Test explicitly specifying `scene_graph`.
-    MultibodyPlant<double> plant(0.0);
-    SceneGraph<double> scene_graph;
-    AddModelsFromSdfFile(full_name, package_map, &plant, &scene_graph);
-    plant.Finalize();
-    num_visuals_explicit = plant.num_visual_geometries();
-  }
-  EXPECT_NE(num_visuals_explicit, 0);
-  {
-    // Test implicitly specifying.
-    MultibodyPlant<double> plant(0.0);
-    SceneGraph<double> scene_graph;
-    plant.RegisterAsSourceForSceneGraph(&scene_graph);
-    AddModelsFromSdfFile(full_name, package_map, &plant);
-    plant.Finalize();
-    EXPECT_EQ(plant.num_visual_geometries(), num_visuals_explicit);
-  }
+  // Test that having a scene graph results in visual geometries.
+  MultibodyPlant<double> plant(0.0);
+  SceneGraph<double> scene_graph;
+  plant.RegisterAsSourceForSceneGraph(&scene_graph);
+  AddModelsFromSdfFile(full_name, package_map, &plant);
+  plant.Finalize();
+  EXPECT_NE(plant.num_visual_geometries(), 0);
 }
 
 // Verifies that the SDF loader can leverage a specified package map.
 GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
   MultibodyPlant<double> plant(0.0);
-  geometry::SceneGraph<double> scene_graph;
 
   const std::string full_name = FindResourceOrThrow(
       "drake/multibody/parsing/test/sdf_parser_test/"
@@ -765,7 +747,7 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointParsingTest) {
 
   // Read in the SDF file.
   const std::vector<ModelInstanceIndex> instances =
-      AddModelsFromSdfFile(full_name, package_map, &plant, &scene_graph);
+      AddModelsFromSdfFile(full_name, package_map, &plant);
   const ModelInstanceIndex instance1 = instances.front();
   plant.Finalize();
 
@@ -920,7 +902,7 @@ GTEST_TEST(MultibodyPlantSdfParserTest, JointActuatorParsingTest) {
   PackageMap package_map;
 
   // Read in the SDF file.
-  AddModelFromSdfFile(full_name, "", package_map, &plant, nullptr);
+  AddModelFromSdfFile(full_name, "", package_map, &plant);
   plant.Finalize();
 
   // In SDF, effort limits are specified in <joint><axis><limit><effort>,
@@ -954,7 +936,7 @@ GTEST_TEST(MultibodyPlantSdfParserTest, RevoluteSpringParsingTest) {
   PackageMap package_map;
 
   // Reads in the SDF file.
-  AddModelFromSdfFile(full_name, "", package_map, &plant, nullptr);
+  AddModelFromSdfFile(full_name, "", package_map, &plant);
   plant.Finalize();
 
   // Plant should have a UniformGravityFieldElement by default.
@@ -1205,7 +1187,7 @@ template <typename ShapeType>
 
 // Confirms that all supported geometries in an SDF file are registered. The
 // *details* of the geometries are ignored -- we assume that that functionality
-// is tested in detail_scene_graph_test.cc. This merely makes sure that *that*
+// is tested in detail_sdf_geometry_test.cc. This merely makes sure that *that*
 // functionality is exercised appropriately.
 void TestForParsedGeometry(const char* sdf_name, geometry::Role role) {
   const std::string full_name = FindResourceOrThrow(sdf_name);
@@ -2000,7 +1982,7 @@ GTEST_TEST(SdfParser, InterfaceAPI) {
   MultibodyPlant<double> plant(0.0);
 
   DRAKE_ASSERT_NO_THROW(AddModelFromSdfFile(sdf_file_path, "", package_map,
-                                            &plant, nullptr, true));
+                                            &plant, true));
 
   plant.Finalize();
   auto context = plant.CreateDefaultContext();
@@ -2102,61 +2084,67 @@ GTEST_TEST(SdfParser, CollisionFilterGroupParsingTest) {
       "sdf_parser_test/collision_filter_group_parsing_test.sdf");
   MultibodyPlant<double> plant(0.0);
   SceneGraph<double> scene_graph;
+  plant.RegisterAsSourceForSceneGraph(&scene_graph);
   PackageMap package_map;
 
   // Read in the SDF file.
-  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant, &scene_graph);
+  AddModelFromSdfFile(full_sdf_filename, "", package_map, &plant);
 
   // Get geometry ids for all the bodies.
   const geometry::SceneGraphInspector<double>& inspector =
       scene_graph.model_inspector();
-  const auto geometry_id_link1 = inspector.GetGeometryIdByName(
-      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link1").index()),
-      geometry::Role::kProximity,
-      "collision_filter_group_parsing_test::link1_sphere");
-  const auto geometry_id_link2 = inspector.GetGeometryIdByName(
-      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link2").index()),
-      geometry::Role::kProximity,
-      "collision_filter_group_parsing_test::link2_sphere");
-  const auto geometry_id_link3 = inspector.GetGeometryIdByName(
-      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link3").index()),
-      geometry::Role::kProximity,
-      "collision_filter_group_parsing_test::link3_sphere");
-  const auto geometry_id_link4 = inspector.GetGeometryIdByName(
-      plant.GetBodyFrameIdOrThrow(plant.GetBodyByName("link4").index()),
-      geometry::Role::kProximity,
-      "collision_filter_group_parsing_test::link4_sphere");
+  static constexpr int kNumLinks = 6;
+  std::vector<GeometryId> ids(1 + kNumLinks);  // allow 1-based indices.
+  for (int k = 1; k <= 6; ++k) {
+    const auto geometry_id = inspector.GetGeometryIdByName(
+        plant.GetBodyFrameIdOrThrow(
+            plant.GetBodyByName(fmt::format("link{}", k)).index()),
+        geometry::Role::kProximity,
+        fmt::format("collision_filter_group_parsing_test::link{}_sphere", k));
+    ids[k] = geometry_id;
+  }
 
   // Make sure the plant is not finalized such that the adjacent joint filter
   // has not taken into effect yet. This guarantees that the collision filtering
   // is applied due to the collision filter group parsing.
   ASSERT_FALSE(plant.is_finalized());
 
-  // We have four geometries and six possible pairs, each with a particular
+  // We have six geometries and 15 possible pairs, each with a particular
   // disposition.
   // (1, 2) - unfiltered
-  // (1, 3) - filtered by group_link_3 ignores group_link_14
-  // (1, 4) - filtered by group_link_14 ignores itself
-  // (2, 3) - filtered by group_link_2 ignores group_link_3
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[1], ids[2]));
+  // (1, 3) - filtered by group_link3 ignores group_link14
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[1], ids[3]));
+  // (1, 4) - filtered by group_link14 ignores itself
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[1], ids[4]));
+  // (1, 5) - unfiltered
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[1], ids[5]));
+  // (1, 6) - unfiltered
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[1], ids[6]));
+  // (2, 3) - filtered by group_link2 ignores group_link3
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[2], ids[3]));
   // (2, 4) - unfiltered (although declared in an *ignored* self-filtering
-  // group_link_24).
-  // (3, 4) - filtered by group_link_3 ignores group_link_14
-  EXPECT_FALSE(
-      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link2));
-  EXPECT_TRUE(
-      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link3));
-  EXPECT_TRUE(
-      inspector.CollisionFiltered(geometry_id_link1, geometry_id_link4));
-  EXPECT_TRUE(
-      inspector.CollisionFiltered(geometry_id_link2, geometry_id_link3));
-  EXPECT_FALSE(
-      inspector.CollisionFiltered(geometry_id_link2, geometry_id_link4));
-  EXPECT_TRUE(
-      inspector.CollisionFiltered(geometry_id_link3, geometry_id_link4));
+  // group_link24).
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[2], ids[4]));
+  // (2, 5) - filtered by group_link56 ignored group_link2
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[2], ids[5]));
+  // (2, 6) - filtered by group_link56 ignored group_link2
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[2], ids[6]));
+  // (3, 4) - filtered by group_link3 ignores group_link14
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[3], ids[4]));
+  // (3, 5) - filtered by group_link56 ignored group_link3
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[3], ids[5]));
+  // (3, 6) - filtered by group_link56 ignored group_link3
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[3], ids[6]));
+  // (4, 5) - unfiltered
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[4], ids[5]));
+  // (4, 6) - unfiltered
+  EXPECT_FALSE(inspector.CollisionFiltered(ids[4], ids[6]));
+  // (5, 6) - filtered by group_link56 ignores itself
+  EXPECT_TRUE(inspector.CollisionFiltered(ids[5], ids[6]));
 
   // Make sure we can add the model a second time.
-  AddModelFromSdfFile(
-      full_sdf_filename, "model2", package_map, &plant, &scene_graph);
+  AddModelFromSdfFile(full_sdf_filename, "model2", package_map, &plant);
 }
 
 // TODO(marcoag) We might want to add some form of feedback for:
