@@ -19,6 +19,36 @@
 namespace drake {
 namespace geometry {
 
+/** The set of parameters for configuring Meshcat. */
+struct MeshcatParams {
+  /** Meshcat will listen only on the given hostname (e.g., "localhost").
+  If "*" is specified, then it will listen on all interfaces.
+  If empty, an appropriate default value will be chosen (currently "*"). */
+  std::string host{"*"};
+
+  /** Meshcat will listen on the given http `port`. If no port is specified,
+  then it will listen on the first available port starting at 7000 (up to 7099).
+  @pre We require `port` >= 1024. */
+  std::optional<int> port{std::nullopt};
+
+  /** The `web_url_pattern` may be used to change the web_url() (and therefore
+  the ws_url()) reported by Meshcat. This may be useful in case %Meshcat sits
+  behind a firewall or proxy.
+
+  The pattern follows the
+  <a href="https://en.cppreference.com/w/cpp/utility/format">std::format</a>
+  specification language, except that `arg-id` substitutions are performed
+  using named arguments instead of positional indices.
+
+  There are two arguments available to the pattern:
+  - `{port}` will be substituted with the %Meshcat server's listen port number;
+  - `{host}` will be substituted with this params structure's `host` field, or
+    else with "localhost" in case the `host` was one of the placeholders for
+    "all interfaces".
+  */
+  std::string web_url_pattern{"http://{host}:{port}"};
+};
+
 /** Provides an interface to %Meshcat (https://github.com/rdeits/meshcat).
 
 Each instance of this class spawns a thread which runs an http/websocket server.
@@ -85,11 +115,14 @@ class Meshcat {
  public:
   DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Meshcat)
 
-  /** Constructs the Meshcat instance on `port`. If no port is specified, the it
-  will listen on the first available port starting at 7000 (up to 7099).
+  /** Constructs the %Meshcat instance on `port`. If no port is specified,
+  it will listen on the first available port starting at 7000 (up to 7099).
   @pre We require `port` >= 1024.
   @throws std::exception if no requested `port` is available. */
-  explicit Meshcat(const std::optional<int>& port = std::nullopt);
+  explicit Meshcat(std::optional<int> port = std::nullopt);
+
+  /** Constructs the %Meshcat instance using the given `params`. */
+  explicit Meshcat(const MeshcatParams& params);
 
   ~Meshcat();
 
@@ -469,10 +502,24 @@ class Meshcat {
   std::string GetPackedProperty(std::string_view path,
                                 std::string property) const;
 
+#ifndef DRAKE_DOXYGEN_CXX
+  /* (Internal use only) Causes the websocket worker thread to exit with an
+  error, which will spit out an exception from the next Meshcat main thread
+  function that gets called. */
+  void InjectWebsocketThreadFault();
+#endif
+
  private:
   // Provides PIMPL encapsulation of websocket types.
-  class WebSocketPublisher;
-  std::unique_ptr<WebSocketPublisher> publisher_;
+  class Impl;
+
+  // Safe accessors for the PIMPL object.
+  Impl& impl();
+  const Impl& impl() const;
+
+  // Always a non-nullptr Impl, but stored as void* to enforce that the
+  // impl() accessors are always used.
+  void* const impl_{};
 };
 
 }  // namespace geometry
