@@ -28,6 +28,7 @@ drake_cc_package_library(
         ":cond",
         ":copyable_unique_ptr",
         ":default_scalars",
+        ":diagnostic_policy",
         ":double",
         ":drake_bool",
         ":drake_path",
@@ -110,6 +111,7 @@ drake_cc_library(
     deps = [
         ":autodiff",
         ":cond",
+        ":double",
         ":essential",
     ],
 )
@@ -137,6 +139,15 @@ drake_cc_library(
     deps = [
         ":cond",
         ":dummy_value",
+        ":essential",
+    ],
+)
+
+drake_cc_library(
+    name = "diagnostic_policy",
+    srcs = ["diagnostic_policy.cc"],
+    hdrs = ["diagnostic_policy.h"],
+    deps = [
         ":essential",
     ],
 )
@@ -476,6 +487,7 @@ drake_cc_library(
     hdrs = ["random.h"],
     deps = [
         ":autodiff",
+        ":copyable_unique_ptr",
         ":essential",
         ":extract_double",
     ],
@@ -684,6 +696,7 @@ drake_cc_googletest(
     name = "random_test",
     deps = [
         ":random",
+        "//common/test_utilities:limit_malloc",
     ],
 )
 
@@ -815,6 +828,14 @@ drake_cc_googletest(
         ":copyable_unique_ptr",
         "//common:unused",
         "//common/test_utilities:is_dynamic_castable",
+    ],
+)
+
+drake_cc_googletest(
+    name = "diagnostic_policy_test",
+    deps = [
+        ":diagnostic_policy",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 

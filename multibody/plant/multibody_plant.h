@@ -20,7 +20,6 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/contact_solvers/contact_solver.h"
 #include "drake/multibody/contact_solvers/contact_solver_results.h"
-#include "drake/multibody/hydroelastics/hydroelastic_engine.h"
 #include "drake/multibody/plant/contact_jacobians.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/coulomb_friction.h"
@@ -4191,37 +4190,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // MultibodyTree::Finalize() was called.
   void FinalizePlantOnly();
 
-  // MemberSceneGraph is an alias for SceneGraph<T>, except when T = Expression.
-  struct SceneGraphStub;
-  using MemberSceneGraph = typename std::conditional_t<
-      std::is_same_v<T, symbolic::Expression>,
-      SceneGraphStub, geometry::SceneGraph<T>>;
-
-  // Returns the SceneGraph that pre-Finalize geometry operations should
-  // interact with.  In most cases, that will be whatever the user has passed
-  // into RegisterAsSourceForSceneGraph.  However, when T = Expression, the
-  // result will be a stub type instead.  (We can get rid of the stub once
-  // SceneGraph supports symbolic::Expression.)
-  MemberSceneGraph& member_scene_graph();
-
   // Consolidates calls to Eval on the geometry query input port to have a
   // consistent and helpful error message in the situation where the
   // geometry_query_input_port is not connected, but is expected to be.
   const geometry::QueryObject<T>& EvalGeometryQueryInput(
-      const systems::Context<T>& context) const {
-    this->ValidateContext(context);
-    if (!get_geometry_query_input_port().HasValue(context)) {
-      throw std::logic_error(
-          "The geometry query input port (see "
-          "MultibodyPlant::get_geometry_query_input_port()) "
-          "of this MultibodyPlant is not connected. Please connect the"
-          "geometry query output port of a SceneGraph object "
-          "(see SceneGraph::get_query_output_port()) to this plants input "
-          "port in a Diagram.");
-    }
-    return get_geometry_query_input_port()
-        .template Eval<geometry::QueryObject<T>>(context);
-  }
+      const systems::Context<T>& context) const;
 
   // Helper to acquire per-geometry contact parameters from SG.
   // Returns the pair (stiffness, dissipation)
@@ -4229,41 +4202,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // isn't assigned that parameter.
   std::pair<T, T> GetPointContactParameters(
       geometry::GeometryId id,
-      const geometry::SceneGraphInspector<T>& inspector) const {
-    if constexpr (std::is_same_v<symbolic::Expression, T>) {
-      throw std::domain_error(
-          "This method doesn't support T = symbolic::Expression.");
-    }
-    const geometry::ProximityProperties* prop =
-        inspector.GetProximityProperties(id);
-    DRAKE_DEMAND(prop != nullptr);
-    return std::pair(prop->template GetPropertyOrDefault<T>(
-                         geometry::internal::kMaterialGroup,
-                         geometry::internal::kPointStiffness,
-                         penalty_method_contact_parameters_.geometry_stiffness),
-                     prop->template GetPropertyOrDefault<T>(
-                         geometry::internal::kMaterialGroup,
-                         geometry::internal::kHcDissipation,
-                         penalty_method_contact_parameters_.dissipation));
-  }
+      const geometry::SceneGraphInspector<T>& inspector) const;
 
   // Helper to acquire per-geometry Coulomb friction coefficients from
   // SceneGraph.
   const CoulombFriction<double>& GetCoulombFriction(
       geometry::GeometryId id,
-      const geometry::SceneGraphInspector<T>& inspector) const {
-    if constexpr (std::is_same_v<symbolic::Expression, T>) {
-      throw std::domain_error(
-          "This method doesn't support T = symbolic::Expression.");
-    }
-    const geometry::ProximityProperties* prop =
-        inspector.GetProximityProperties(id);
-    DRAKE_DEMAND(prop != nullptr);
-    DRAKE_THROW_UNLESS(prop->HasProperty(geometry::internal::kMaterialGroup,
-                                         geometry::internal::kFriction));
-    return prop->GetProperty<CoulombFriction<double>>(
-        geometry::internal::kMaterialGroup, geometry::internal::kFriction);
-  }
+      const geometry::SceneGraphInspector<T>& inspector) const;
 
   // Helper method to apply collision filters based on body-adjacency. By
   // default, we don't consider collisions between geometries affixed to
@@ -4934,7 +4879,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // The model used by the plant to compute contact forces. Keep this in sync
   // with the default value in multibody_plant_config.h; there are already
   // assertions in the cc file that enforce this.
-  ContactModel contact_model_{ContactModel::kPoint};
+  ContactModel contact_model_{ContactModel::kHydroelasticWithFallback};
 
   // User's choice of the representation of contact surfaces in discrete
   // systems. The default value is dependent on whether the system is
@@ -5027,8 +4972,6 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // (Experimental) The vector of physical models owned by MultibodyPlant.
   std::vector<std::unique_ptr<internal::PhysicalModel<T>>> physical_models_;
 
-  hydroelastics::internal::HydroelasticEngine<T> hydroelastics_engine_;
-
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;
 
@@ -5069,7 +5012,7 @@ struct AddMultibodyPlantSceneGraphResult;
 ///   used.
 /// @return Pair of the registered plant and scene graph.
 /// @pre `builder` must be non-null.
-/// @tparam_nonsymbolic_scalar
+/// @tparam_default_scalar
 /// @relates MultibodyPlant
 template <typename T>
 AddMultibodyPlantSceneGraphResult<T>
@@ -5092,7 +5035,7 @@ AddMultibodyPlantSceneGraph(
 ///   used.
 /// @return Pair of the registered plant and scene graph.
 /// @pre `builder` and `plant` must be non-null.
-/// @tparam_nonsymbolic_scalar
+/// @tparam_default_scalar
 /// @relates MultibodyPlant
 template <typename T>
 AddMultibodyPlantSceneGraphResult<T>
@@ -5182,19 +5125,6 @@ std::pair<T, T> CombinePointContactParameters(const T& k1, const T& k2,
 #ifndef DRAKE_DOXYGEN_CXX
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
 // See the .cc file for an explanation why we specialize these methods.
-template <>
-typename MultibodyPlant<symbolic::Expression>::SceneGraphStub&
-MultibodyPlant<symbolic::Expression>::member_scene_graph();
-template <>
-void MultibodyPlant<symbolic::Expression>::CalcPointPairPenetrations(
-    const systems::Context<symbolic::Expression>&,
-    std::vector<geometry::PenetrationAsPointPair<symbolic::Expression>>*) const;
-template <>
-std::vector<CoulombFriction<double>>
-MultibodyPlant<symbolic::Expression>::CalcCombinedFrictionCoefficients(
-    const drake::systems::Context<symbolic::Expression>&,
-    const std::vector<internal::DiscreteContactPair<symbolic::Expression>>&)
-    const;
 template <>
 void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(
     const systems::Context<symbolic::Expression>&,

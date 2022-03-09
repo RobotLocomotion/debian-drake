@@ -18,7 +18,7 @@
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/parsing/detail_ignition.h"
 #include "drake/multibody/parsing/detail_path_utils.h"
-#include "drake/multibody/parsing/detail_scene_graph.h"
+#include "drake/multibody/parsing/detail_sdf_geometry.h"
 #include "drake/multibody/parsing/detail_urdf_parser.h"
 #include "drake/multibody/parsing/scoped_names.h"
 #include "drake/multibody/tree/ball_rpy_joint.h"
@@ -40,7 +40,6 @@ using Eigen::Matrix3d;
 using Eigen::Translation3d;
 using Eigen::Vector3d;
 using geometry::GeometryInstance;
-using geometry::SceneGraph;
 using math::RigidTransformd;
 using math::RotationMatrixd;
 using std::unique_ptr;
@@ -578,33 +577,16 @@ sdf::InterfaceModelPtr ParseNestedInterfaceModel(
 
 // Helper method to load an SDF file and read the contents into an sdf::Root
 // object.
-std::string LoadSdf(
+void LoadSdf(
     sdf::Root* root,
     const DataSource& data_source,
     const sdf::ParserConfig& parser_config) {
-  data_source.DemandExactlyOne();
-
-  std::string root_dir;
-  if (data_source.file_name) {
-    const std::string full_path = GetFullPath(*data_source.file_name);
+  if (data_source.IsFilename()) {
+    const std::string full_path = data_source.GetAbsolutePath();
     ThrowAnyErrors(root->Load(full_path, parser_config));
-    // Uses the directory holding the SDF to be the root directory
-    // in which to search for files referenced within the SDF file.
-    size_t found = full_path.find_last_of("/\\");
-    if (found != std::string::npos) {
-      root_dir = full_path.substr(0, found);
-    } else {
-      // TODO(jwnimmer-tri) This is not unit tested.  In any case, we should be
-      // using drake::filesystem for path manipulation, not string searching.
-      root_dir = ".";
-    }
   } else {
-    DRAKE_DEMAND(data_source.file_contents != nullptr);
-    ThrowAnyErrors(root->LoadSdfString(*data_source.file_contents,
-                                       parser_config));
+    ThrowAnyErrors(root->LoadSdfString(data_source.contents(), parser_config));
   }
-
-  return root_dir;
 }
 
 struct LinkInfo {
@@ -1165,16 +1147,18 @@ sdf::InterfaceModelPtr ParseNestedInterfaceModel(
     return nullptr;
   }
 
-  DataSource data_source;
-  data_source.file_name = &include.ResolvedFileName();
+  DataSource data_source(DataSource::kFilename, &include.ResolvedFileName());
 
   ModelInstanceIndex main_model_instance;
   // New instances will have indices starting from cur_num_models
   int cur_num_models = plant->num_model_instances();
   if (is_urdf) {
+    // TODO(rpoyner-tri): integrate with overall diagnostic policy.
+    drake::internal::DiagnosticPolicy diagnostic;
+    ParsingWorkspace workspace{package_map, diagnostic, plant};
     main_model_instance =
         AddModelFromUrdf(data_source, include.LocalModelName().value_or(""),
-                         include.AbsoluteParentName(), package_map, plant);
+                         include.AbsoluteParentName(), workspace);
     // Add explicit model frame to first link.
     auto body_indices = plant->GetBodyIndices(main_model_instance);
     if (body_indices.empty()) {
@@ -1196,7 +1180,7 @@ sdf::InterfaceModelPtr ParseNestedInterfaceModel(
     // another included model that requires a custom parser.
     sdf::Root root;
 
-    std::string root_dir = LoadSdf(&root, data_source, parser_config);
+    LoadSdf(&root, data_source, parser_config);
     DRAKE_DEMAND(nullptr != root.Model());
     const sdf::Model &model = *root.Model();
 
@@ -1204,7 +1188,7 @@ sdf::InterfaceModelPtr ParseNestedInterfaceModel(
         include.LocalModelName().value_or(model.Name());
     main_model_instance = AddModelsFromSpecification(
         model, sdf::JoinName(include.AbsoluteParentName(), model_name), {},
-        plant, package_map, root_dir).front();
+        plant, package_map, data_source.GetRootDir()).front();
   }
 
   // Now that the model is parsed, we create interface elements to send to
@@ -1314,7 +1298,6 @@ ModelInstanceIndex AddModelFromSdf(
     const std::string& model_name_in,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph,
     bool test_sdf_forced_nesting) {
   DRAKE_THROW_UNLESS(plant != nullptr);
     DRAKE_THROW_UNLESS(!plant->is_finalized());
@@ -1324,7 +1307,7 @@ ModelInstanceIndex AddModelFromSdf(
 
   sdf::Root root;
 
-  std::string root_dir = LoadSdf(&root, data_source, parser_config);
+  LoadSdf(&root, data_source, parser_config);
 
   if (root.Model() == nullptr) {
     throw std::runtime_error("File must have a single <model> element.");
@@ -1332,16 +1315,12 @@ ModelInstanceIndex AddModelFromSdf(
   // Get the only model in the file.
   const sdf::Model& model = *root.Model();
 
-  if (scene_graph != nullptr && !plant->geometry_source_is_registered()) {
-    plant->RegisterAsSourceForSceneGraph(scene_graph);
-  }
-
   const std::string model_name =
       model_name_in.empty() ? model.Name() : model_name_in;
 
   std::vector<ModelInstanceIndex> added_model_instances =
       AddModelsFromSpecification(model, model_name, {}, plant, package_map,
-                                 root_dir);
+                                 data_source.GetRootDir());
 
   DRAKE_DEMAND(!added_model_instances.empty());
   return added_model_instances.front();
@@ -1351,7 +1330,6 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
     const DataSource& data_source,
     const PackageMap& package_map,
     MultibodyPlant<double>* plant,
-    geometry::SceneGraph<double>* scene_graph,
     bool test_sdf_forced_nesting) {
   DRAKE_THROW_UNLESS(plant != nullptr);
   DRAKE_THROW_UNLESS(!plant->is_finalized());
@@ -1361,7 +1339,7 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
 
   sdf::Root root;
 
-  std::string root_dir = LoadSdf(&root, data_source, parser_config);
+  LoadSdf(&root, data_source, parser_config);
 
   // There either must be exactly one model, or exactly one world.
 #pragma GCC diagnostic push
@@ -1373,10 +1351,6 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
     throw std::runtime_error(fmt::format(
         "File must have exactly one <model> or exactly one <world>, but"
         " instead has {} models and {} worlds", model_count, world_count));
-  }
-
-  if (scene_graph != nullptr && !plant->geometry_source_is_registered()) {
-    plant->RegisterAsSourceForSceneGraph(scene_graph);
   }
 
   std::vector<ModelInstanceIndex> model_instances;
@@ -1391,7 +1365,7 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
 
     std::vector<ModelInstanceIndex> added_model_instances =
         AddModelsFromSpecification(model, model.Name(), {}, plant,
-                                   package_map, root_dir);
+                                   package_map, data_source.GetRootDir());
     model_instances.insert(model_instances.end(),
                            added_model_instances.begin(),
                            added_model_instances.end());
@@ -1410,7 +1384,7 @@ std::vector<ModelInstanceIndex> AddModelsFromSdf(
       const sdf::Model& model = *world.ModelByIndex(model_index);
       std::vector<ModelInstanceIndex> added_model_instances =
           AddModelsFromSpecification(model, model.Name(), {}, plant,
-                                     package_map, root_dir);
+                                     package_map, data_source.GetRootDir());
       model_instances.insert(model_instances.end(),
                              added_model_instances.begin(),
                              added_model_instances.end());

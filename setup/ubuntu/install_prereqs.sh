@@ -31,15 +31,20 @@ while [ "${1:-}" != "" ]; do
     --with-kcov)
       source_distribution_args+=(--with-kcov)
       ;;
+    # Install prerequisites that are only needed to when CC=clang-9, i.e.,
+    # opts-in to the ability to compile Drake's C++ code using Clang.
+    --with-clang)
+      source_distribution_args+=(--with-clang)
+      ;;
+    # Do NOT install prerequisites that are only needed to when CC=clang-9,
+    # i.e., opts-out of the ability to compile Drake's C++ code using Clang.
+    --without-clang)
+      source_distribution_args+=(--without-clang)
+      ;;
     # Install prerequisites that are only needed to run select maintainer
     # scripts. Most developers will not need to install these dependencies.
     --with-maintainer-only)
       source_distribution_args+=(--with-maintainer-only)
-      ;;
-    # Do NOT install prerequisites that are only needed to build documentation,
-    # i.e., those prerequisites that are dependencies of bazel run //doc:build.
-    --without-doc-only)
-      source_distribution_args+=(--without-doc-only)
       ;;
     # Do NOT install prerequisites that are only needed to build and/or run
     # unit tests, i.e., those prerequisites that are not dependencies of
@@ -72,12 +77,12 @@ done
 # development dependencies such as build-essential and cmake.
 
 source "${BASH_SOURCE%/*}/binary_distribution/install_prereqs.sh" \
-  "${binary_distribution_args[@]:-}"
+  "${binary_distribution_args[@]}"
 
 # The following additional dependencies are only needed when developing with
 # source distributions.
 source "${BASH_SOURCE%/*}/source_distribution/install_prereqs.sh" \
-  "${source_distribution_args[@]:-}"
+  "${source_distribution_args[@]}"
 
 # Configure user environment, executing as user if we're under `sudo`.
 user_env_script="${BASH_SOURCE%/*}/source_distribution/install_prereqs_user_environment.sh"

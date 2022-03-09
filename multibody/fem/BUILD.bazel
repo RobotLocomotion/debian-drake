@@ -17,12 +17,16 @@ drake_cc_package_library(
     deps = [
         ":calc_lame_parameters",
         ":constitutive_model",
+        ":corotated_model",
+        ":corotated_model_data",
         ":damping_model",
         ":deformation_gradient_data",
         ":isoparametric_element",
+        ":linear_constitutive_model",
         ":linear_constitutive_model_data",
         ":linear_simplex_element",
         ":matrix_utilities",
+        ":petsc_symmetric_block_sparse_matrix",
         ":quadrature",
         ":schur_complement",
         ":simplex_gaussian_quadrature",
@@ -50,6 +54,40 @@ drake_cc_library(
     deps = [
         "//common:essential",
         "//common:nice_type_name",
+    ],
+)
+
+drake_cc_library(
+    name = "corotated_model",
+    srcs = [
+        "corotated_model.cc",
+    ],
+    hdrs = [
+        "corotated_model.h",
+    ],
+    deps = [
+        ":calc_lame_parameters",
+        ":constitutive_model",
+        ":corotated_model_data",
+        ":matrix_utilities",
+        "//common:autodiff",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "corotated_model_data",
+    srcs = [
+        "corotated_model_data.cc",
+    ],
+    hdrs = [
+        "corotated_model_data.h",
+    ],
+    deps = [
+        ":deformation_gradient_data",
+        ":matrix_utilities",
+        "//common:autodiff",
+        "//common:essential",
     ],
 )
 
@@ -95,6 +133,23 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "linear_constitutive_model",
+    srcs = [
+        "linear_constitutive_model.cc",
+    ],
+    hdrs = [
+        "linear_constitutive_model.h",
+    ],
+    deps = [
+        ":calc_lame_parameters",
+        ":constitutive_model",
+        ":linear_constitutive_model_data",
+        "//common:autodiff",
+        "//common:essential",
+    ],
+)
+
+drake_cc_library(
     name = "linear_constitutive_model_data",
     srcs = [
         "linear_constitutive_model_data.cc",
@@ -134,6 +189,22 @@ drake_cc_library(
     deps = [
         "//common:default_scalars",
         "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "petsc_symmetric_block_sparse_matrix",
+    srcs = [
+        "petsc_symmetric_block_sparse_matrix.cc",
+    ],
+    hdrs = [
+        "petsc_symmetric_block_sparse_matrix.h",
+    ],
+    deps = [
+        ":schur_complement",
+        "//common:essential",
+        "//common:unused",
+        "@petsc",
     ],
 )
 
@@ -195,6 +266,40 @@ drake_cc_googletest(
     ],
 )
 
+drake_cc_library(
+    name = "constitutive_model_test_utilities",
+    testonly = 1,
+    srcs = ["test/constitutive_model_test_utilities.cc"],
+    hdrs = ["test/constitutive_model_test_utilities.h"],
+    deps = [
+        ":constitutive_model",
+        ":corotated_model",
+        ":linear_constitutive_model",
+        ":matrix_utilities",
+        "//common:autodiff",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+        "//math:gradient",
+    ],
+)
+
+drake_cc_googletest(
+    name = "corotated_model_test",
+    deps = [
+        ":constitutive_model_test_utilities",
+        ":corotated_model",
+    ],
+)
+
+drake_cc_googletest(
+    name = "corotated_model_data_test",
+    deps = [
+        ":corotated_model",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//math:geometric_transform",
+    ],
+)
+
 drake_cc_googletest(
     name = "damping_model_test",
     deps = [
@@ -223,6 +328,14 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "linear_constitutive_model_test",
+    deps = [
+        ":constitutive_model_test_utilities",
+        ":linear_constitutive_model",
+    ],
+)
+
+drake_cc_googletest(
     name = "linear_constitutive_model_data_test",
     deps = [
         ":linear_constitutive_model_data",
@@ -246,6 +359,19 @@ drake_cc_googletest(
         "//common/test_utilities:eigen_matrix_compare",
         "//math:geometric_transform",
         "//math:gradient",
+    ],
+)
+
+drake_cc_googletest(
+    name = "petsc_symmetric_block_sparse_matrix_test",
+    tags = [
+        # This tests uses multiple CPUs concurrently.
+        "cpu:100",
+    ],
+    deps = [
+        ":petsc_symmetric_block_sparse_matrix",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
     ],
 )
 
