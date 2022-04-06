@@ -324,13 +324,6 @@ Copyright: 2013, Kitware, Inc.
            2019, Toyota Research Institute
 License: Apache-2.0
 
-Files: third_party/com_github_jbeder_yaml_cpp/include/*
-       third_party/com_github_jbeder_yaml_cpp/src/*
-Copyright: 2008-2015, Jesse Beder
-           2020, Massachusetts Institute of Technology
-           2020, Toyota Research Institute
-License: Expat
-
 Files: tools/workspace/pybind11/mkdoc.py
        tools/workspace/pybind11/mkdoc_comment.py
 Copyright: 2016, Wenzel Jakob
