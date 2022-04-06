@@ -420,7 +420,9 @@ class Meshcat {
   //@{
 
   /** Adds a button with the label `name` to the meshcat browser controls GUI.
-   */
+   If the button already existed, then resets its click count to zero instead.
+   @throws std::exception if `name` has already been added as any other type
+   of control (e.g., slider). */
   void AddButton(std::string name);
 
   /** Returns the number of times the button `name` has been clicked in the
@@ -437,7 +439,9 @@ class Meshcat {
    The slider range is given by [`min`, `max`]. `step` is the smallest
    increment by which the slider can change values (and therefore send updates
    back to this Meshcat instance). `value` specifies the initial value; it will
-   be truncated to the slider range and rounded to the nearest increment. */
+   be truncated to the slider range and rounded to the nearest increment.
+   @throws std::exception if `name` has already been added as any type of
+   control (e.g., either button or slider). */
   void AddSlider(std::string name, double min, double max, double step,
                  double value);
 
@@ -503,10 +507,16 @@ class Meshcat {
                                 std::string property) const;
 
 #ifndef DRAKE_DOXYGEN_CXX
-  /* (Internal use only) Causes the websocket worker thread to exit with an
-  error, which will spit out an exception from the next Meshcat main thread
-  function that gets called. */
-  void InjectWebsocketThreadFault();
+  /* (Internal use for unit testing only) Causes the websocket worker thread to
+  exit with an error, which will spit out an exception from the next Meshcat
+  main thread function that gets called. The fault_number selects which fault to
+  inject, between 0 and kMaxFaultNumber inclusive; refer to the implementation
+  for details on meaning of each number. */
+  void InjectWebsocketThreadFault(int fault_number);
+
+  /* (Internal use for unit testing only) The max value (inclusive) for
+  fault_number, above. */
+  static constexpr int kMaxFaultNumber = 3;
 #endif
 
  private:
