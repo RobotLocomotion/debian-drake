@@ -54,6 +54,7 @@ from pydrake.multibody.math import (
     SpatialAcceleration_,
 )
 from pydrake.multibody.plant import (
+    AddMultibodyPlant,
     AddMultibodyPlantSceneGraph,
     CalcContactFrictionFromSurfaceProperties,
     ConnectContactResultsToDrakeVisualizer,
@@ -66,6 +67,7 @@ from pydrake.multibody.plant import (
     CoulombFriction_,
     ExternallyAppliedSpatialForce_,
     MultibodyPlant_,
+    MultibodyPlantConfig,
     PointPairContactInfo_,
     PropellerInfo,
     Propeller_,
@@ -229,6 +231,17 @@ class TestPlant(unittest.TestCase):
         context = diagram.CreateDefaultContext()
         with self.assertRaises(RuntimeError):
             plant.EvalBodyPoseInWorld(context, body)
+
+    def test_multibody_plant_config(self):
+        MultibodyPlantConfig()
+        config = MultibodyPlantConfig(time_step=0.01)
+        self.assertEqual(config.time_step, 0.01)
+        copy.copy(config)
+
+        builder = DiagramBuilder_[float]()
+        plant, scene_graph = AddMultibodyPlant(config, builder)
+        self.assertIsNotNone(plant)
+        self.assertIsNotNone(scene_graph)
 
     @numpy_compare.check_all_types
     def test_multibody_plant_api_via_parsing(self, T):
@@ -483,6 +496,8 @@ class TestPlant(unittest.TestCase):
         self.assertIsInstance(joint_actuator.name(), str)
         self.assertIsInstance(joint_actuator.joint(), Joint)
         self.assertIsInstance(joint_actuator.effort_limit(), float)
+        self.assertGreaterEqual(joint_actuator.input_start(), 0)
+        self.assertEqual(joint_actuator.num_inputs(), 1)
 
     def _test_rotational_inertia_or_unit_inertia_api(self, T, Class):
         """
@@ -958,8 +973,10 @@ class TestPlant(unittest.TestCase):
 
         nq = 2
         nv = 2
+        nu = 1
         self.assertEqual(plant.num_positions(), nq)
         self.assertEqual(plant.num_velocities(), nv)
+        self.assertEqual(plant.num_actuators(), nu)
 
         q0 = np.array([3.14, 2.])
         v0 = np.array([-0.5, 1.])
@@ -1033,6 +1050,8 @@ class TestPlant(unittest.TestCase):
         self.assertEqual(plant.GetVelocityUpperLimits().shape, (nv,))
         self.assertEqual(plant.GetAccelerationLowerLimits().shape, (nv,))
         self.assertEqual(plant.GetAccelerationUpperLimits().shape, (nv,))
+        self.assertEqual(plant.GetEffortLowerLimits().shape, (nu,))
+        self.assertEqual(plant.GetEffortUpperLimits().shape, (nu,))
 
     @numpy_compare.check_all_types
     def test_port_access(self, T):
@@ -1816,6 +1835,15 @@ class TestPlant(unittest.TestCase):
             SpatialVelocity_[T])
         self.assertIsInstance(
             dut.CalcSpatialVelocity(context=context, frame_M=dut, frame_E=dut),
+            SpatialVelocity_[T])
+        self.assertIsInstance(
+            dut.CalcRelativeSpatialVelocityInWorld(context=context,
+                                                   other_frame=dut),
+            SpatialVelocity_[T])
+        self.assertIsInstance(
+            dut.CalcRelativeSpatialVelocity(context=context, other_frame=dut,
+                                            measured_in_frame=dut,
+                                            expressed_in_frame=dut),
             SpatialVelocity_[T])
         self.assertIsInstance(
             dut.CalcSpatialAccelerationInWorld(context=context),
