@@ -9,6 +9,7 @@
 
 #include <fmt/format.h>
 
+#include "drake/common/diagnostic_policy.h"
 #include "drake/common/drake_assert.h"
 #include "drake/common/filesystem.h"
 #include "drake/common/text_logging.h"
@@ -26,6 +27,8 @@ using Eigen::Vector3d;
 using Eigen::Vector4d;
 using math::RigidTransformd;
 using tinyxml2::XMLElement;
+
+using drake::internal::DiagnosticPolicy;
 
 UrdfMaterial AddMaterialToMaterialMap(const std::string& material_name,
                                       UrdfMaterial material,
@@ -131,14 +134,12 @@ UrdfMaterial ParseMaterial(const XMLElement* node, bool name_required,
     std::string texture_name;
     if (ParseStringAttribute(texture_node, "filename", &texture_name) &&
         !texture_name.empty()) {
-      texture_path = ResolveUri(texture_name, package_map, root_dir);
-      if (texture_path->empty()) {
-        // Error condition: #4. File specified, but the resource is not
-        // available.
-        throw std::runtime_error(fmt::format(
-            "Unable to locate the texture file defined on line {}: {}",
-            texture_node->GetLineNum(), texture_name));
-      }
+      // TODO(jwnimmer-tri) ParseMaterial should accept a policy as an argument
+      // and pass it along here, instead of making a temporary one.
+      const DiagnosticPolicy diagnostic;
+      texture_path = ResolveUri(
+          diagnostic, texture_name, package_map, root_dir);
+      DRAKE_THROW_UNLESS(!texture_path->empty());
     }
   }
 
@@ -247,13 +248,12 @@ std::unique_ptr<geometry::Shape> ParseMesh(const XMLElement* shape_node,
     throw std::runtime_error("Mesh element has no filename tag");
   }
 
+  // TODO(jwnimmer-tri) ParseMesh should accept a policy as an argument and pass
+  // it along here, instead of making a temporary one.
+  const DiagnosticPolicy diagnostic;
   const std::string resolved_filename =
-      ResolveUri(filename, package_map, root_dir);
-  if (resolved_filename.empty()) {
-    throw std::runtime_error(
-        "Mesh file name could not be resolved from the provided uri \"" +
-        filename + "\".");
-  }
+      ResolveUri(diagnostic, filename, package_map, root_dir);
+  DRAKE_THROW_UNLESS(!resolved_filename.empty());
 
   double scale = 1.0;
   // Obtains the scale of the mesh if it exists.
@@ -590,8 +590,12 @@ geometry::GeometryInstance ParseCollision(
           rigid_element->GetLineNum(), compliant_element->GetLineNum()));
     }
 
-    props = ParseProximityProperties(read_double, rigid_element != nullptr,
-                                     compliant_element != nullptr);
+    // TODO(jwnimmer-tri) ParseCollision should accept a policy as an argument
+    // and pass it along here, instead of making a temporary one.
+    const DiagnosticPolicy diagnostic;
+    props = ParseProximityProperties(
+        diagnostic, read_double, rigid_element != nullptr,
+        compliant_element != nullptr);
   }
 
   // TODO(SeanCurtis-TRI): Remove all of this legacy parsing code based on

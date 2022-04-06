@@ -7,9 +7,14 @@
 #include <string>
 #include <utility>
 
-#include <sdf/sdf.hh>
+#include <sdf/Box.hh>
+#include <sdf/Capsule.hh>
+#include <sdf/Cylinder.hh>
+#include <sdf/Element.hh>
+#include <sdf/Ellipsoid.hh>
+#include <sdf/Plane.hh>
+#include <sdf/Sphere.hh>
 
-#include "drake/common/filesystem.h"
 #include "drake/geometry/geometry_instance.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/multibody/parsing/detail_common.h"
@@ -27,6 +32,7 @@ using std::move;
 using std::set;
 using std::string;
 
+using drake::internal::DiagnosticPolicy;
 using geometry::GeometryInstance;
 using geometry::IllustrationProperties;
 using geometry::ProximityProperties;
@@ -82,6 +88,7 @@ T GetChildElementValue(const sdf::Element& element,
 }  // namespace
 
 std::unique_ptr<geometry::Shape> MakeShapeFromSdfGeometry(
+    const DiagnosticPolicy& diagnostic,
     const sdf::Geometry& sdf_geometry, ResolveFilename resolve_filename) {
   // TODO(amcastro-tri): unit tests for different error paths are needed.
 
@@ -146,6 +153,7 @@ std::unique_ptr<geometry::Shape> MakeShapeFromSdfGeometry(
       DRAKE_DEMAND(mesh_element != nullptr);
       const std::string file_name =
           resolve_filename(
+              diagnostic,
               GetChildElementValue<std::string>(*mesh_element, "uri"));
       double scale = 1.0;
       if (mesh_element->HasElement("scale")) {
@@ -188,6 +196,7 @@ std::unique_ptr<geometry::Shape> MakeShapeFromSdfGeometry(
 }
 
 std::unique_ptr<GeometryInstance> MakeGeometryInstanceFromSdfVisual(
+    const DiagnosticPolicy& diagnostic,
     const sdf::Visual& sdf_visual, ResolveFilename resolve_filename,
     const math::RigidTransformd& X_LG) {
   const sdf::Geometry& sdf_geometry = *sdf_visual.Geom();
@@ -246,18 +255,21 @@ std::unique_ptr<GeometryInstance> MakeGeometryInstanceFromSdfVisual(
     }
   }
 
-  auto shape = MakeShapeFromSdfGeometry(sdf_geometry, resolve_filename);
+  auto shape = MakeShapeFromSdfGeometry(
+      diagnostic, sdf_geometry, resolve_filename);
   if (shape == nullptr) {
     return nullptr;
   }
   auto instance =
       make_unique<GeometryInstance>(X_LC, move(shape), sdf_visual.Name());
   instance->set_illustration_properties(
-      MakeVisualPropertiesFromSdfVisual(sdf_visual, resolve_filename));
+      MakeVisualPropertiesFromSdfVisual(
+          diagnostic, sdf_visual, resolve_filename));
   return instance;
 }
 
 IllustrationProperties MakeVisualPropertiesFromSdfVisual(
+    const DiagnosticPolicy& diagnostic,
     const sdf::Visual& sdf_visual, ResolveFilename resolve_filename) {
   // This doesn't directly use the sdf::Material API on purpose. In the current
   // version, if a parameter (e.g., diffuse) is missing it will *not* be
@@ -288,7 +300,7 @@ IllustrationProperties MakeVisualPropertiesFromSdfVisual(
           material_element->Get<std::string>("drake:diffuse_map", {});
       if (has_value) {
         const std::string resolved_path =
-            resolve_filename(texture_name);
+            resolve_filename(diagnostic, texture_name);
         if (resolved_path.empty()) {
           throw std::runtime_error(fmt::format(
               "Unable to locate the texture file: {}", texture_name));
@@ -398,6 +410,7 @@ RigidTransformd MakeGeometryPoseFromSdfCollision(
 }
 
 ProximityProperties MakeProximityPropertiesForCollision(
+    const DiagnosticPolicy& diagnostic,
     const sdf::Collision& sdf_collision) {
   const sdf::ElementPtr collision_element = sdf_collision.Element();
   DRAKE_DEMAND(collision_element != nullptr);
@@ -438,7 +451,8 @@ ProximityProperties MakeProximityPropertiesForCollision(
           "one can be provided.");
     }
 
-    properties = ParseProximityProperties(read_double, is_rigid, is_compliant);
+    properties = ParseProximityProperties(
+        diagnostic, read_double, is_rigid, is_compliant);
   }
 
   // TODO(SeanCurtis-TRI): Remove all of this legacy parsing code based on
@@ -460,13 +474,13 @@ ProximityProperties MakeProximityPropertiesForCollision(
         const sdf::Element* ode_element =
             MaybeGetChildElement(*friction_element, "ode");
         if (MaybeGetChildElement(*ode_element, "mu") ||
-        MaybeGetChildElement(*ode_element, "mu2")) {
-          logging::Warn one_time(
+            MaybeGetChildElement(*ode_element, "mu2")) {
+          diagnostic.Warning(fmt::format(
+              "In <collision name='{}'>: "
               "When drake contact parameters are fully specified in the "
               "<drake:proximity_properties> tag, the <surface><friction><ode>"
-              "<mu*> tags are ignored. While parsing, there was at least one "
-              "instance where friction coefficients were defined in both "
-              "locations.");
+              "<mu*> tags are ignored.",
+              sdf_collision.Name()));
         }
       }
     }

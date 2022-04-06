@@ -168,10 +168,11 @@ GTEST_TEST(FileParserTest, ExtensionMatchTest) {
   // URDF parser, shown here by it generating a different exception message).
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromFile("acrobot.SDF"),
-      ".*\n.*Unable to read file.*");
+      ".*Unable to read file.*");
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromFile("acrobot.URDF"),
-      "Failed to parse XML file .*\nXML_ERROR_FILE_NOT_FOUND");
+      "/.*/acrobot.URDF:0: error: "
+      "Failed to parse XML file: XML_ERROR_FILE_NOT_FOUND");
 }
 
 GTEST_TEST(FileParserTest, BadStringTest) {
@@ -179,11 +180,12 @@ GTEST_TEST(FileParserTest, BadStringTest) {
   MultibodyPlant<double> plant(0.0);
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromString("bad", "sdf"),
-      ".*\n.*Unable to read SDF string.*");
+      ".*Unable to read SDF string.*");
 
   // Malformed URDF string is an error.
   DRAKE_EXPECT_THROWS_MESSAGE(
       Parser(&plant).AddModelFromString("bad", "urdf"),
+      "<literal-string>.urdf:1: error: "
       "Failed to parse XML string: XML_ERROR_PARSING_TEXT");
 
   // Unknown extension is an error.
@@ -225,7 +227,7 @@ GTEST_TEST(FileParserTest, PackageMapTest) {
   // Attempt to read in the SDF file without setting the package map first.
   const std::string new_sdf_filename = sdf_path + "/box.sdf";
   DRAKE_EXPECT_THROWS_MESSAGE(parser.AddModelFromFile(new_sdf_filename),
-      ".*ERROR: Mesh file name could not be resolved from the provided uri.*");
+      "error.*unknown package.*box_model.*");
 
   // Try again.
   parser.package_map().PopulateFromFolder(temp_dir);
