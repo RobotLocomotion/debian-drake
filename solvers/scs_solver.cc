@@ -169,7 +169,7 @@ void ParseLinearConstraint(const MathematicalProgram& prog,
     const Eigen::VectorXd& ub = linear_constraint.evaluator()->upper_bound();
     const Eigen::VectorXd& lb = linear_constraint.evaluator()->lower_bound();
     const VectorXDecisionVariable& x = linear_constraint.variables();
-    const Eigen::MatrixXd& Ai = linear_constraint.evaluator()->A();
+    const Eigen::MatrixXd& Ai = linear_constraint.evaluator()->GetDenseA();
     for (int i = 0; i < linear_constraint.evaluator()->num_constraints();
          ++i) {
       const bool is_ub_finite{!std::isinf(ub(i))};
@@ -220,8 +220,8 @@ void ParseLinearEqualityConstraint(
   // A x + s = b. s in zero cone.
   for (const auto& linear_equality_constraint :
        prog.linear_equality_constraints()) {
-    const Eigen::SparseMatrix<double> Ai =
-        linear_equality_constraint.evaluator()->GetSparseMatrix();
+    const Eigen::SparseMatrix<double>& Ai =
+        linear_equality_constraint.evaluator()->get_sparse_A();
     const std::vector<Eigen::Triplet<double>> Ai_triplets =
         math::SparseMatrixToTriplets(Ai);
     A_triplets->reserve(A_triplets->size() + Ai_triplets.size());

@@ -1101,6 +1101,18 @@ void BindMathematicalProgram(py::module m) {
           py::arg("A"), py::arg("b"), py::arg("vars"),
           doc.MathematicalProgram.AddRotatedLorentzConeConstraint
               .doc_3args_A_b_vars)
+      .def(
+          "AddQuadraticAsRotatedLorentzConeConstraint",
+          [](MathematicalProgram* self,
+              const Eigen::Ref<const Eigen::MatrixXd>& Q,
+              const Eigen::Ref<const Eigen::VectorXd>& b, double c,
+              const Eigen::Ref<const VectorXDecisionVariable>& vars) {
+            return self->AddQuadraticAsRotatedLorentzConeConstraint(
+                Q, b, c, vars);
+          },
+          py::arg("Q"), py::arg("b"), py::arg("c"), py::arg("vars"),
+          doc.MathematicalProgram.AddQuadraticAsRotatedLorentzConeConstraint
+              .doc)
       .def("AddLinearComplementarityConstraint",
           static_cast<Binding<LinearComplementarityConstraint> (
               MathematicalProgram::*)(const Eigen::Ref<const Eigen::MatrixXd>&,
@@ -1670,15 +1682,26 @@ void BindEvaluatorsAndBindings(py::module m) {
           py::arg("lower_bound"), py::arg("upper_bound"),
           "Set both the lower and upper bounds of the constraint.");
 
-  py::class_<LinearConstraint, Constraint, std::shared_ptr<LinearConstraint>>(
-      m, "LinearConstraint", doc.LinearConstraint.doc)
+  py::class_<LinearConstraint, Constraint, std::shared_ptr<LinearConstraint>>
+      linear_constraint_cls(m, "LinearConstraint", doc.LinearConstraint.doc);
+  linear_constraint_cls
       .def(py::init([](const Eigen::MatrixXd& A, const Eigen::VectorXd& lb,
                         const Eigen::VectorXd& ub) {
         return std::make_unique<LinearConstraint>(A, lb, ub);
       }),
           py::arg("A"), py::arg("lb"), py::arg("ub"),
-          doc.LinearConstraint.ctor.doc)
-      .def("A", &LinearConstraint::A, doc.LinearConstraint.A.doc)
+          doc.LinearConstraint.ctor.doc_dense_A)
+      .def(py::init([](const Eigen::SparseMatrix<double>& A,
+                        const Eigen::Ref<const Eigen::VectorXd>& lb,
+                        const Eigen::Ref<const Eigen::VectorXd>& ub) {
+        return std::make_unique<LinearConstraint>(A, lb, ub);
+      }),
+          py::arg("A"), py::arg("lb"), py::arg("ub"),
+          doc.LinearConstraint.ctor.doc_sparse_A)
+      .def("GetDenseA", &LinearConstraint::GetDenseA,
+          doc.LinearConstraint.GetDenseA.doc)
+      .def("get_sparse_A", &LinearConstraint::get_sparse_A,
+          doc.LinearConstraint.get_sparse_A.doc)
       .def(
           "UpdateCoefficients",
           [](LinearConstraint& self, const Eigen::MatrixXd& new_A,
@@ -1686,7 +1709,15 @@ void BindEvaluatorsAndBindings(py::module m) {
             self.UpdateCoefficients(new_A, new_lb, new_ub);
           },
           py::arg("new_A"), py::arg("new_lb"), py::arg("new_ub"),
-          doc.LinearConstraint.UpdateCoefficients.doc)
+          doc.LinearConstraint.UpdateCoefficients.doc_dense_A)
+      .def(
+          "UpdateCoefficients",
+          [](LinearConstraint& self, const Eigen::SparseMatrix<double>& new_A,
+              const Eigen::VectorXd& new_lb, const Eigen::VectorXd& new_ub) {
+            self.UpdateCoefficients(new_A, new_lb, new_ub);
+          },
+          py::arg("new_A"), py::arg("new_lb"), py::arg("new_ub"),
+          doc.LinearConstraint.UpdateCoefficients.doc_sparse_A)
       .def(
           "UpdateLowerBound",
           [](LinearConstraint& self, const Eigen::VectorXd& new_lb) {
@@ -1706,6 +1737,14 @@ void BindEvaluatorsAndBindings(py::module m) {
             self.set_bounds(new_lb, new_ub);
           },
           py::arg("new_lb"), py::arg("new_ub"), doc.Constraint.set_bounds.doc);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  linear_constraint_cls.def("A",
+      WrapDeprecated(
+          doc.LinearConstraint.A.doc_deprecated, &LinearConstraint::A),
+      doc.LinearConstraint.A.doc_deprecated);
+#pragma GCC diagnostic pop
 
   py::class_<LorentzConeConstraint, Constraint,
       std::shared_ptr<LorentzConeConstraint>>
@@ -1760,13 +1799,18 @@ void BindEvaluatorsAndBindings(py::module m) {
         return std::make_unique<LinearEqualityConstraint>(Aeq, beq);
       }),
           py::arg("Aeq"), py::arg("beq"),
-          doc.LinearEqualityConstraint.ctor
-              .doc_2args_constEigenMatrixBase_constEigenMatrixBase)
+          doc.LinearEqualityConstraint.ctor.doc_dense_Aeq)
+      .def(py::init([](const Eigen::SparseMatrix<double>& Aeq,
+                        const Eigen::VectorXd& beq) {
+        return std::make_unique<LinearEqualityConstraint>(Aeq, beq);
+      }),
+          py::arg("Aeq"), py::arg("beq"),
+          doc.LinearEqualityConstraint.ctor.doc_sparse_Aeq)
       .def(py::init([](const Eigen::RowVectorXd& a, double beq) {
         return std::make_unique<LinearEqualityConstraint>(a, beq);
       }),
           py::arg("a"), py::arg("beq"),
-          doc.LinearEqualityConstraint.ctor.doc_2args_a_beq)
+          doc.LinearEqualityConstraint.ctor.doc_row_a)
       .def(
           "UpdateCoefficients",
           [](LinearEqualityConstraint& self,  // BR
