@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/contact_solvers/sap/sap_constraint.h"
@@ -62,7 +64,7 @@ namespace internal {
 template <typename T>
 class SapFrictionConeConstraint final : public SapConstraint<T> {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SapFrictionConeConstraint);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(SapFrictionConeConstraint);
 
   /* Numerical parameters that define the constraint. Refer to this class's
    documentation for details. */
@@ -91,7 +93,7 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
    exception is thrown.
    @param[in] phi0 The value of the signed distance at the previous time step.
    @param[in] parameters Constraint parameters. See Parameters for details. */
-  SapFrictionConeConstraint(int clique, const MatrixX<T>& J, const T& phi0,
+  SapFrictionConeConstraint(int clique, MatrixX<T> J, const T& phi0,
                             const Parameters& parameters);
 
   /* Constructs a contact constraint for the case in which two cliques
@@ -106,9 +108,8 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
    velocities. It must have three rows or an exception is thrown.
    @param[in] phi0 The value of the signed distance at the previous time step.
    @param[in] parameters Constraint parameters. See Parameters for details. */
-  SapFrictionConeConstraint(int clique0, int clique1, const MatrixX<T>& J0,
-                            const MatrixX<T>& J1, const T& phi0,
-                            const Parameters& p);
+  SapFrictionConeConstraint(int clique0, int clique1, MatrixX<T> J0,
+                            MatrixX<T> J1, const T& phi0, const Parameters& p);
 
   /* Returns the coefficient of friction for this constraint. */
   const T& mu() const { return parameters_.mu; }
@@ -132,6 +133,10 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
    Refer to [Castro et al., 2021] for details. */
   VectorX<T> CalcDiagonalRegularization(const T& time_step,
                                         const T& wi) const final;
+
+  std::unique_ptr<SapConstraint<T>> Clone() const final {
+    return std::make_unique<SapFrictionConeConstraint<T>>(*this);
+  }
 
  private:
   Parameters parameters_;
