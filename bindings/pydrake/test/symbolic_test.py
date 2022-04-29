@@ -1157,6 +1157,12 @@ class TestSymbolicMonomial(unittest.TestCase):
         self.assertEqual(m.Evaluate(env=env),
                          env[x] ** 3 * env[y])
 
+    def test_evaluate_batch(self):
+        m = sym.Monomial(x, 3) * sym.Monomial(y)
+        monomial_vals = m.Evaluate(
+            vars=[x, y], vars_values=[[1, 2, 3], [4, 5, 6]])
+        np.testing.assert_array_equal(monomial_vals, [4, 8 * 5, 27 * 6])
+
     def test_evaluate_exception_np_nan(self):
         m = sym.Monomial(x, 3)
         env = {x: np.nan}
@@ -1530,6 +1536,10 @@ class TestExtractVariablesFromExpression(unittest.TestCase):
         self.assertEqual(len(map_var_to_index), 2)
         for i in range(2):
             self.assertEqual(map_var_to_index[variables[i].get_id()], i)
+
+        variables, map_var_to_index = sym.ExtractVariablesFromExpression(
+            expressions=np.array([x + x * y, y+1]))
+        self.assertEqual(variables.shape, (2,))
 
 
 class TestDecomposeAffineExpression(unittest.TestCase):
